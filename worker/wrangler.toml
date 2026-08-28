@@ -1,0 +1,11 @@
+name = "sniplink-worker"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# KV Namespace Binding
+# After creating a KV namespace with:
+#   wrangler kv namespace create "LINKS_KV"
+# Paste the returned ID below:
+[[kv_namespaces]]
+binding = "LINKS_KV"
+id = "YOUR_KV_NAMESPACE_ID_HERE"

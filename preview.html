@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Shorten your URLs instantly with our lightning-fast, free URL shortener. Track clicks, manage links, and own your brand." />
+  <title>Sniplink — Lightning-Fast URL Shortener (Live Standalone Preview)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- React & Babel Standalone for Instant Live Zero-Config Preview -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* Origin Financial Theme */
+    :root {
+      --color-bg: #090D16;
+      --color-bg-elevated: #0F1420;
+      --color-surface: #151B28;
+      --color-card: #1A2232;
+      --color-border: #1E293B;
+      --color-border-hover: #334155;
+      --color-text-primary: #F1F5F9;
+      --color-text-secondary: #94A3B8;
+      --color-text-muted: #64748B;
+      --color-accent: #6366F1;
+      --color-accent-hover: #818CF8;
+      --gradient-cta: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%);
+      --color-success: #22C55E;
+      --color-error: #EF4444;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.2);
+      --shadow-card-hover: 0 4px 12px rgba(99,102,241,0.15), 0 8px 32px rgba(0,0,0,0.3);
+      --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+      --max-width: 1100px;
+      --header-height: 64px;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--color-bg);
+      color: var(--color-text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    a { color: var(--color-accent); text-decoration: none; transition: color var(--transition-fast); }
+    a:hover { color: var(--color-accent-hover); }
+
+    .container { width: 100%; max-width: var(--max-width); margin: 0 auto; padding: 0 20px; }
+
+    /* Nav */
+    .nav-header {
+      position: sticky; top: 0; z-index: 100;
+      height: var(--header-height);
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 100%; max-width: var(--max-width); margin: 0 auto; padding: 0 20px;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 1.25rem; font-weight: 800; color: var(--color-text-primary);
+      cursor: pointer;
+    }
+    .nav-logo span {
+      background: var(--gradient-cta);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .nav-links { display: flex; gap: 8px; list-style: none; }
+    .nav-btn {
+      background: none; border: none; font-family: inherit; font-size: 0.875rem; font-weight: 500;
+      padding: 8px 16px; border-radius: var(--radius-sm); color: var(--color-text-secondary);
+      cursor: pointer; transition: all var(--transition-fast); display: flex; align-items: center; gap: 6px;
+    }
+    .nav-btn:hover { color: var(--color-text-primary); background: var(--color-surface); }
+    .nav-btn.active { background: rgba(99, 102, 241, 0.12); color: var(--color-accent); font-weight: 600; }
+
+    /* Main Content */
+    .main-content { min-height: calc(100vh - var(--header-height) - 80px); padding: 48px 0; }
+
+    /* Hero */
+    .hero { text-align: center; max-width: 650px; margin: 0 auto 40px; }
+    .hero h1 { font-size: 2.75rem; font-weight: 800; line-height: 1.2; letter-spacing: -0.03em; margin-bottom: 14px; }
+    .gradient-text { background: var(--gradient-cta); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { font-size: 1.0625rem; color: var(--color-text-secondary); }
+
+    /* Shortener Card */
+    .shortener-card {
+      max-width: 680px; margin: 0 auto; background: var(--color-card);
+      border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+      padding: 32px; box-shadow: var(--shadow-card);
+    }
+    .input-group { display: flex; gap: 12px; }
+    .input-group input {
+      flex: 1; padding: 14px 18px; background: var(--color-bg-elevated);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      color: var(--color-text-primary); font-family: inherit; font-size: 0.9375rem; outline: none;
+      transition: border-color var(--transition-fast);
+    }
+    .input-group input:focus { border-color: var(--color-accent); }
+    .input-group input.error { border-color: var(--color-error); }
+    .btn-shorten {
+      display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px;
+      background: var(--gradient-cta); color: #fff; font-family: inherit; font-size: 0.9375rem;
+      font-weight: 600; border: none; border-radius: var(--radius-sm); cursor: pointer;
+      transition: opacity var(--transition-fast), transform var(--transition-fast);
+    }
+    .btn-shorten:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-shorten:active { transform: translateY(0); }
+    .error-msg { margin-top: 10px; font-size: 0.8125rem; color: var(--color-error); }
+
+    /* Result Card */
+    .result-card {
+      margin-top: 24px; background: var(--color-bg-elevated);
+      border: 1px solid rgba(99, 102, 241, 0.3); border-radius: var(--radius-md);
+      padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      animation: slideUp 0.3s ease;
+    }
+    .result-short-url { font-size: 1.125rem; font-weight: 700; color: var(--color-accent); margin-bottom: 4px; display: block; }
+    .result-long-url { font-size: 0.8125rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+    .btn-copy {
+      padding: 10px 20px; background: var(--color-surface); border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm); color: var(--color-text-primary); font-family: inherit;
+      font-size: 0.8125rem; font-weight: 600; cursor: pointer; transition: all var(--transition-fast);
+      display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    .btn-copy:hover { border-color: var(--color-accent); color: var(--color-accent); }
+    .btn-copy.copied { background: rgba(34, 197, 94, 0.1); border-color: var(--color-success); color: var(--color-success); }
+
+    /* Bento Grid */
+    .bento-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-bottom: 32px; }
+    .card {
+      background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      padding: 24px; box-shadow: var(--shadow-card); transition: transform var(--transition-base), border-color var(--transition-base);
+    }
+    .card:hover { transform: translateY(-2px); border-color: var(--color-border-hover); box-shadow: var(--shadow-card-hover); }
+    .card-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: 8px; display: block; }
+    .card-value { font-size: 2.25rem; font-weight: 800; color: var(--color-text-primary); letter-spacing: -0.03em; }
+    .card-icon { width: 42px; height: 42px; border-radius: var(--radius-sm); background: rgba(99,102,241,0.12); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; color: var(--color-accent); }
+
+    /* Table */
+    .table-wrapper { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .data-table th { text-align: left; padding: 12px 16px; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
+    .data-table td { padding: 14px 16px; color: var(--color-text-secondary); border-bottom: 1px solid rgba(30, 41, 59, 0.5); }
+    .click-badge { display: inline-flex; padding: 4px 10px; background: rgba(99, 102, 241, 0.12); border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: var(--color-accent); }
+
+    /* Ad Placeholder — Zero CLS */
+    .ad-placeholder {
+      width: 100%; min-height: 90px; background: var(--color-bg-elevated);
+      border: 1px dashed var(--color-border); border-radius: var(--radius-md);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--color-text-muted); font-size: 0.75rem; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase; margin-top: 36px;
+    }
+
+    /* 404 */
+    .notfound { text-align: center; padding: 60px 20px; }
+    .notfound-code { font-size: 7rem; font-weight: 800; line-height: 1; background: var(--gradient-cta); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+    /* Footer */
+    .footer { border-top: 1px solid var(--color-border); padding: 24px 0; text-align: center; }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; max-width: var(--max-width); margin: 0 auto; padding: 0 20px; flex-wrap: wrap; gap: 12px; font-size: 0.8125rem; color: var(--color-text-muted); }
+
+    @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 640px) {
+      .input-group { flex-direction: column; }
+      .hero h1 { font-size: 2rem; }
+      .shortener-card { padding: 20px; }
+      .result-card { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Local state link store
+    const INITIAL_LINKS = [
+      { code: 'origin1', url: 'https://www.useorigin.com', clicks: 342, createdAt: new Date().toISOString() },
+      { code: 'github', url: 'https://github.com', clicks: 128, createdAt: new Date().toISOString() },
+      { code: 'react', url: 'https://react.dev', clicks: 89, createdAt: new Date().toISOString() }
+    ];
+
+    function App() {
+      const [view, setView] = useState('shortener'); // 'shortener' | 'dashboard' | '404'
+      const [links, setLinks] = useState(() => {
+        try {
+          const saved = localStorage.getItem('sniplink_standalone');
+          return saved ? JSON.parse(saved) : INITIAL_LINKS;
+        } catch {
+          return INITIAL_LINKS;
+        }
+      });
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('sniplink_standalone', JSON.stringify(links));
+        } catch (e) {}
+      }, [links]);
+
+      // URL Shortening handler
+      const [longUrl, setLongUrl] = useState('');
+      const [shortResult, setShortResult] = useState(null);
+      const [error, setError] = useState('');
+      const [copied, setCopied] = useState(false);
+
+      const handleShorten = (e) => {
+        e.preventDefault();
+        setError('');
+        setShortResult(null);
+
+        const trimmed = longUrl.trim();
+        if (!trimmed) {
+          setError('Please enter a destination URL.');
+          return;
+        }
+
+        try {
+          const u = new URL(trimmed);
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error();
+        } catch {
+          setError('Invalid URL protocol. Must start with http:// or https://');
+          return;
+        }
+
+        const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let code = '';
+        for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+
+        const newLink = {
+          code,
+          url: trimmed,
+          clicks: 0,
+          createdAt: new Date().toISOString()
+        };
+
+        setLinks(prev => [newLink, ...prev]);
+        setShortResult({
+          code,
+          url: trimmed,
+          shortUrl: `${window.location.origin}/#${code}`
+        });
+        setLongUrl('');
+      };
+
+      const handleCopy = (text) => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      };
+
+      const handleLinkClick = (code) => {
+        setLinks(prev => prev.map(l => l.code === code ? { ...l, clicks: l.clicks + 1 } : l));
+      };
+
+      const totalLinks = links.length;
+      const totalClicks = links.reduce((s, l) => s + (l.clicks || 0), 0);
+
+      return (
+        <div>
+          {/* Header */}
+          <header className="nav-header">
+            <div className="nav-inner">
+              <div className="nav-logo" onClick={() => setView('shortener')}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{color: '#6366F1'}}>
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                <span>Sniplink</span>
+              </div>
+              <ul className="nav-links">
+                <li>
+                  <button className={`nav-btn ${view === 'shortener' ? 'active' : ''}`} onClick={() => setView('shortener')}>
+                    Shortener
+                  </button>
+                </li>
+                <li>
+                  <button className={`nav-btn ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
+                    Dashboard ({totalLinks})
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </header>
+
+          {/* Main Area */}
+          <main className="main-content container">
+            {view === 'shortener' && (
+              <div>
+                <div className="hero">
+                  <h1><span className="gradient-text">Own your links.</span><br />Share with confidence.</h1>
+                  <p>Transform long, unwieldy URLs into clean, trackable short links. Instant redirects powered by Cloudflare KV edge storage.</p>
+                </div>
+
+                <div className="shortener-card">
+                  <form onSubmit={handleShorten}>
+                    <div className="input-group">
+                      <input
+                        type="url"
+                        placeholder="Paste your long URL here (e.g. https://example.com)..."
+                        value={longUrl}
+                        onChange={(e) => { setLongUrl(e.target.value); setError(''); }}
+                        className={error ? 'error' : ''}
+                      />
+                      <button type="submit" className="btn-shorten">Shorten Link →</button>
+                    </div>
+                    {error && <div className="error-msg">{error}</div>}
+                  </form>
+
+                  {shortResult && (
+                    <div className="result-card">
+                      <div>
+                        <a
+                          href={shortResult.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="result-short-url"
+                          onClick={() => handleLinkClick(shortResult.code)}
+                        >
+                          {shortResult.shortUrl}
+                        </a>
+                        <div className="result-long-url">{shortResult.url}</div>
+                      </div>
+                      <button className={`btn-copy ${copied ? 'copied' : ''}`} onClick={() => handleCopy(shortResult.shortUrl)}>
+                        {copied ? '✓ Copied!' : 'Copy Link'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="ad-placeholder">Ad Space — 728×90 / Zero Cumulative Layout Shift (CLS)</div>
+              </div>
+            )}
+
+            {view === 'dashboard' && (
+              <div>
+                <div style={{ marginBottom: 32 }}>
+                  <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 4 }}>Analytics Dashboard</h1>
+                  <p style={{ color: 'var(--color-text-secondary)' }}>Real-time click metrics & link routing logs.</p>
+                </div>
+
+                <div className="bento-grid">
+                  <div className="card">
+                    <div className="card-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                    </div>
+                    <span className="card-label">Total Links Created</span>
+                    <span className="card-value">{totalLinks}</span>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 15l-2 5L9 9l11 4-5 2z" /><path d="M22 22l-5-5" /></svg>
+                    </div>
+                    <span className="card-label">Total Clicks Routed</span>
+                    <span className="card-value">{totalClicks}</span>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                    </div>
+                    <span className="card-label">Avg Clicks / Link</span>
+                    <span className="card-value">{totalLinks > 0 ? (totalClicks / totalLinks).toFixed(1) : '0'}</span>
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: 24 }}>
+                  <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: 16 }}>Recent Link Activity</h2>
+                  <div className="table-wrapper">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Short Code</th>
+                          <th>Destination URL</th>
+                          <th>Clicks Routed</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {links.map((link) => (
+                          <tr key={link.code}>
+                            <td style={{ fontWeight: 700, color: 'var(--color-accent)' }}>/{link.code}</td>
+                            <td><span style={{ maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', whiteSpace: 'nowrap' }}>{link.url}</span></td>
+                            <td><span className="click-badge">{link.clicks} clicks</span></td>
+                            <td>
+                              <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={() => handleLinkClick(link.code)} style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
+                                Visit & Track ↗
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="ad-placeholder">Ad Space — Dashboard 728×90 Fixed Height Banner</div>
+              </div>
+            )}
+
+            {view === '404' && (
+              <div className="notfound">
+                <div className="notfound-code">404</div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: 8 }}>Page Not Found</h2>
+                <p style={{ color: 'var(--color-text-secondary)', marginBottom: 24 }}>The link is expired or does not exist.</p>
+                <button className="btn-shorten" onClick={() => setView('shortener')}>Back to Shortener</button>
+              </div>
+            )}
+          </main>
+
+          {/* Footer */}
+          <footer className="footer">
+            <div className="footer-inner">
+              <span>&copy; {new Date().getFullYear()} Sniplink. High-Performance URL Shortener.</span>
+              <span>Designed with Origin Financial Aesthetic</span>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
