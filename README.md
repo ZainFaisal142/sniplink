@@ -88,5 +88,5 @@ npm run dev
    ```
 6. Set your Worker URL in `frontend/.env`:
    ```env
-   VITE_API_BASE=https://your-worker.your-subdomain.workers.dev
+   VITE_API_BASE=https://sniplink.zainfaisal107.workers.dev
    ```

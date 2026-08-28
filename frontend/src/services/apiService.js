@@ -1,6 +1,6 @@
 // API Service with Cloudflare Worker support & seamless local edge simulator fallback
 
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://sniplink.zainfaisal107.workers.dev';
 const STORAGE_KEY = 'sniplink_links_data';
 
 // Helper to get local data
