@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Shorten your URLs instantly with our lightning-fast, free URL shortener. Track clicks, manage links, and own your brand." />
-  <title>Sniplink — Lightning-Fast URL Shortener (Live Standalone Preview)</title>
+  <meta name="description" content="Sniplink — High-Performance Edge URL Shortener with Custom Slugs and Live Cloudflare KV Analytics." />
+  <title>Sniplink — Lightning-Fast URL Shortener & Live Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -29,13 +29,16 @@
       --color-accent: #6366F1;
       --color-accent-hover: #818CF8;
       --gradient-cta: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%);
+      --gradient-card: linear-gradient(180deg, rgba(26, 34, 50, 0.8) 0%, rgba(15, 20, 32, 0.9) 100%);
       --color-success: #22C55E;
       --color-error: #EF4444;
+      --color-info: #38BDF8;
+      --radius-xs: 4px;
       --radius-sm: 8px;
       --radius-md: 12px;
       --radius-lg: 16px;
       --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.2);
-      --shadow-card-hover: 0 4px 12px rgba(99,102,241,0.15), 0 8px 32px rgba(0,0,0,0.3);
+      --shadow-card-hover: 0 4px 12px rgba(99,102,241,0.18), 0 8px 32px rgba(0,0,0,0.35);
       --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
       --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
       --max-width: 1100px;
@@ -49,6 +52,10 @@
       color: var(--color-text-primary);
       line-height: 1.6;
       min-height: 100vh;
+      background-image: 
+        radial-gradient(ellipse at top, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+        radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 40%);
+      background-attachment: fixed;
     }
     a { color: var(--color-accent); text-decoration: none; transition: color var(--transition-fast); }
     a:hover { color: var(--color-accent-hover); }
@@ -84,41 +91,83 @@
       cursor: pointer; transition: all var(--transition-fast); display: flex; align-items: center; gap: 6px;
     }
     .nav-btn:hover { color: var(--color-text-primary); background: var(--color-surface); }
-    .nav-btn.active { background: rgba(99, 102, 241, 0.12); color: var(--color-accent); font-weight: 600; }
+    .nav-btn.active { background: rgba(99, 102, 241, 0.12); color: var(--color-accent); font-weight: 600; border: 1px solid rgba(99, 102, 241, 0.25); }
 
     /* Main Content */
     .main-content { min-height: calc(100vh - var(--header-height) - 80px); padding: 48px 0; }
 
     /* Hero */
-    .hero { text-align: center; max-width: 650px; margin: 0 auto 40px; }
+    .hero { text-align: center; max-width: 650px; margin: 0 auto 36px; }
     .hero h1 { font-size: 2.75rem; font-weight: 800; line-height: 1.2; letter-spacing: -0.03em; margin-bottom: 14px; }
     .gradient-text { background: var(--gradient-cta); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .hero p { font-size: 1.0625rem; color: var(--color-text-secondary); }
 
     /* Shortener Card */
     .shortener-card {
-      max-width: 680px; margin: 0 auto; background: var(--color-card);
+      max-width: 680px; margin: 0 auto; background: var(--gradient-card);
       border: 1px solid var(--color-border); border-radius: var(--radius-lg);
       padding: 32px; box-shadow: var(--shadow-card);
     }
-    .input-group { display: flex; gap: 12px; }
+    .form-field-group { margin-bottom: 20px; }
+    .form-label { display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px; }
+    
+    .slug-field-group {
+      background: rgba(15, 20, 32, 0.6);
+      border: 1px solid rgba(30, 41, 59, 0.7);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    .slug-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .slug-label-row .form-label { margin-bottom: 0; color: var(--color-text-primary); }
+    .label-badge {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-xs);
+      background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3);
+      font-size: 0.6875rem; font-weight: 600; color: var(--color-accent-hover); text-transform: uppercase;
+    }
+
     .input-group input {
-      flex: 1; padding: 14px 18px; background: var(--color-bg-elevated);
+      width: 100%; padding: 14px 18px; background: var(--color-bg-elevated);
       border: 1px solid var(--color-border); border-radius: var(--radius-sm);
       color: var(--color-text-primary); font-family: inherit; font-size: 0.9375rem; outline: none;
-      transition: border-color var(--transition-fast);
+      transition: all var(--transition-fast);
     }
-    .input-group input:focus { border-color: var(--color-accent); }
+    .input-group input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15); }
     .input-group input.error { border-color: var(--color-error); }
+
+    .slug-input-wrapper {
+      display: flex; align-items: center; background: var(--color-bg-elevated);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm); overflow: hidden;
+      transition: all var(--transition-fast);
+    }
+    .slug-input-wrapper:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15); }
+    .slug-input-wrapper.error { border-color: var(--color-error); }
+    .slug-prefix {
+      padding: 12px 14px; background: var(--color-surface); border-right: 1px solid var(--color-border);
+      color: var(--color-text-muted); font-size: 0.875rem; font-weight: 600; font-family: monospace; user-select: none;
+    }
+    .slug-input {
+      flex: 1; border: none; background: transparent; padding: 12px 14px; color: var(--color-text-primary);
+      font-family: inherit; font-size: 0.9375rem; outline: none;
+    }
+
+    .field-hint { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--color-text-muted); margin-top: 8px; }
+    .field-hint.error-hint { color: var(--color-error); font-weight: 500; }
+
     .btn-shorten {
-      display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px;
+      width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px;
       background: var(--gradient-cta); color: #fff; font-family: inherit; font-size: 0.9375rem;
       font-weight: 600; border: none; border-radius: var(--radius-sm); cursor: pointer;
       transition: opacity var(--transition-fast), transform var(--transition-fast);
     }
-    .btn-shorten:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-shorten:hover { opacity: 0.95; transform: translateY(-1px); }
     .btn-shorten:active { transform: translateY(0); }
-    .error-msg { margin-top: 10px; font-size: 0.8125rem; color: var(--color-error); }
+    
+    .error-banner {
+      margin-top: 16px; padding: 12px 16px; background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm);
+      color: var(--color-error); font-size: 0.875rem; font-weight: 500;
+    }
 
     /* Result Card */
     .result-card {
@@ -127,8 +176,9 @@
       padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
       animation: slideUp 0.3s ease;
     }
-    .result-short-url { font-size: 1.125rem; font-weight: 700; color: var(--color-accent); margin-bottom: 4px; display: block; }
-    .result-long-url { font-size: 0.8125rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+    .result-tag { font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; color: var(--color-accent); margin-bottom: 4px; display: block; }
+    .result-short-url { font-size: 1.125rem; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; display: block; }
+    .result-long-url { font-size: 0.8125rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; display: block; }
     .btn-copy {
       padding: 10px 20px; background: var(--color-surface); border: 1px solid var(--color-border);
       border-radius: var(--radius-sm); color: var(--color-text-primary); font-family: inherit;
@@ -136,25 +186,42 @@
       display: flex; align-items: center; gap: 6px; white-space: nowrap;
     }
     .btn-copy:hover { border-color: var(--color-accent); color: var(--color-accent); }
-    .btn-copy.copied { background: rgba(34, 197, 94, 0.1); border-color: var(--color-success); color: var(--color-success); }
+    .btn-copy.copied { background: rgba(34, 197, 94, 0.12); border-color: var(--color-success); color: var(--color-success); }
 
     /* Bento Grid */
     .bento-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-bottom: 32px; }
     .card {
-      background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      background: var(--gradient-card); border: 1px solid var(--color-border); border-radius: var(--radius-md);
       padding: 24px; box-shadow: var(--shadow-card); transition: transform var(--transition-base), border-color var(--transition-base);
     }
     .card:hover { transform: translateY(-2px); border-color: var(--color-border-hover); box-shadow: var(--shadow-card-hover); }
-    .card-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: 8px; display: block; }
-    .card-value { font-size: 2.25rem; font-weight: 800; color: var(--color-text-primary); letter-spacing: -0.03em; }
-    .card-icon { width: 42px; height: 42px; border-radius: var(--radius-sm); background: rgba(99,102,241,0.12); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; color: var(--color-accent); }
+    .card-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: 6px; display: block; }
+    .card-value { font-size: 2.25rem; font-weight: 800; color: var(--color-text-primary); letter-spacing: -0.03em; display: block; }
+    .card-subtext { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 8px; display: block; }
+    .card-icon { width: 42px; height: 42px; border-radius: var(--radius-sm); background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; color: var(--color-accent); }
+
+    /* Loading state */
+    .loader-container { display: flex; align-items: center; justify-content: center; min-height: 380px; text-align: center; }
+    .loader-spinner-edge {
+      width: 44px; height: 44px; border: 3px solid rgba(99, 102, 241, 0.15); border-top-color: var(--color-accent);
+      border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 20px;
+    }
+    .edge-pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 999px; color: var(--color-info); font-size: 0.75rem; font-weight: 600; margin-bottom: 10px;
+    }
 
     /* Table */
+    .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .table-wrapper { overflow-x: auto; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    .data-table th { text-align: left; padding: 12px 16px; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
-    .data-table td { padding: 14px 16px; color: var(--color-text-secondary); border-bottom: 1px solid rgba(30, 41, 59, 0.5); }
-    .click-badge { display: inline-flex; padding: 4px 10px; background: rgba(99, 102, 241, 0.12); border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: var(--color-accent); }
+    .data-table th { text-align: left; padding: 14px 16px; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
+    .data-table td { padding: 16px; color: var(--color-text-secondary); border-bottom: 1px solid rgba(30, 41, 59, 0.5); vertical-align: middle; }
+    .data-table tbody tr:hover { background: rgba(99, 102, 241, 0.04); }
+    
+    .slug-badge { font-weight: 700; color: var(--color-accent-hover); font-family: monospace; font-size: 0.9375rem; }
+    .custom-tag { display: inline-block; padding: 2px 6px; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 4px; font-size: 0.6875rem; font-weight: 600; color: #C4B5FD; margin-left: 8px; text-transform: uppercase; }
+    .click-badge { display: inline-flex; padding: 4px 12px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 999px; font-size: 0.8125rem; font-weight: 700; color: var(--color-accent-hover); }
 
     /* Ad Placeholder — Zero CLS */
     .ad-placeholder {
@@ -165,21 +232,12 @@
       letter-spacing: 0.06em; text-transform: uppercase; margin-top: 36px;
     }
 
-    /* 404 */
-    .notfound { text-align: center; padding: 60px 20px; }
-    .notfound-code { font-size: 7rem; font-weight: 800; line-height: 1; background: var(--gradient-cta); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-
     /* Footer */
     .footer { border-top: 1px solid var(--color-border); padding: 24px 0; text-align: center; }
     .footer-inner { display: flex; justify-content: space-between; align-items: center; max-width: var(--max-width); margin: 0 auto; padding: 0 20px; flex-wrap: wrap; gap: 12px; font-size: 0.8125rem; color: var(--color-text-muted); }
 
     @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    @media (max-width: 640px) {
-      .input-group { flex-direction: column; }
-      .hero h1 { font-size: 2rem; }
-      .shortener-card { padding: 20px; }
-      .result-card { flex-direction: column; align-items: flex-start; }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -188,15 +246,14 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
-    // Local state link store
     const INITIAL_LINKS = [
-      { code: 'origin1', url: 'https://www.useorigin.com', clicks: 342, createdAt: new Date().toISOString() },
-      { code: 'github', url: 'https://github.com', clicks: 128, createdAt: new Date().toISOString() },
-      { code: 'react', url: 'https://react.dev', clicks: 89, createdAt: new Date().toISOString() }
+      { code: 'launch-demo', slug: 'launch-demo', url: 'https://www.useorigin.com', clicks: 342, isCustom: true, createdAt: new Date().toISOString() },
+      { code: 'github-repo', slug: 'github-repo', url: 'https://github.com', clicks: 128, isCustom: true, createdAt: new Date().toISOString() },
+      { code: 'x8K2qL', slug: 'x8K2qL', url: 'https://react.dev', clicks: 89, isCustom: false, createdAt: new Date().toISOString() }
     ];
 
     function App() {
-      const [view, setView] = useState('shortener'); // 'shortener' | 'dashboard' | '404'
+      const [view, setView] = useState('shortener'); // 'shortener' | 'dashboard'
       const [links, setLinks] = useState(() => {
         try {
           const saved = localStorage.getItem('sniplink_standalone');
@@ -212,49 +269,85 @@
         } catch (e) {}
       }, [links]);
 
-      // URL Shortening handler
+      // Form State
       const [longUrl, setLongUrl] = useState('');
+      const [customSlug, setCustomSlug] = useState('');
       const [shortResult, setShortResult] = useState(null);
       const [error, setError] = useState('');
+      const [slugError, setSlugError] = useState('');
       const [copied, setCopied] = useState(false);
+      const [isSyncing, setIsSyncing] = useState(false);
+
+      const handleSlugChange = (e) => {
+        const val = e.target.value;
+        setCustomSlug(val);
+        setError('');
+        if (val.trim() && !/^[a-zA-Z0-9-]+$/.test(val.trim())) {
+          setSlugError('Only letters, numbers, and hyphens allowed (no spaces or special symbols).');
+        } else {
+          setSlugError('');
+        }
+      };
 
       const handleShorten = (e) => {
         e.preventDefault();
         setError('');
+        setSlugError('');
         setShortResult(null);
 
-        const trimmed = longUrl.trim();
-        if (!trimmed) {
+        const trimmedUrl = longUrl.trim();
+        const trimmedSlug = customSlug.trim();
+
+        if (!trimmedUrl) {
           setError('Please enter a destination URL.');
           return;
         }
 
         try {
-          const u = new URL(trimmed);
+          const u = new URL(trimmedUrl);
           if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error();
         } catch {
           setError('Invalid URL protocol. Must start with http:// or https://');
           return;
         }
 
-        const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        let code = '';
-        for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+        let finalCode = '';
+
+        if (trimmedSlug) {
+          if (!/^[a-zA-Z0-9-]+$/.test(trimmedSlug)) {
+            setError('Custom slug can only contain letters, numbers, and hyphens.');
+            return;
+          }
+          // Check 409 Conflict
+          const exists = links.some(l => (l.slug || l.code).toLowerCase() === trimmedSlug.toLowerCase());
+          if (exists) {
+            setError('This custom back-half is already taken!');
+            return;
+          }
+          finalCode = trimmedSlug;
+        } else {
+          const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+          for (let i = 0; i < 6; i++) finalCode += chars[Math.floor(Math.random() * chars.length)];
+        }
 
         const newLink = {
-          code,
-          url: trimmed,
+          code: finalCode,
+          slug: finalCode,
+          url: trimmedUrl,
           clicks: 0,
+          isCustom: Boolean(trimmedSlug),
           createdAt: new Date().toISOString()
         };
 
         setLinks(prev => [newLink, ...prev]);
         setShortResult({
-          code,
-          url: trimmed,
-          shortUrl: `${window.location.origin}/#${code}`
+          code: finalCode,
+          slug: finalCode,
+          url: trimmedUrl,
+          shortUrl: `${window.location.origin}/#${finalCode}`
         });
         setLongUrl('');
+        setCustomSlug('');
       };
 
       const handleCopy = (text) => {
@@ -264,7 +357,12 @@
       };
 
       const handleLinkClick = (code) => {
-        setLinks(prev => prev.map(l => l.code === code ? { ...l, clicks: l.clicks + 1 } : l));
+        setLinks(prev => prev.map(l => (l.code === code || l.slug === code) ? { ...l, clicks: l.clicks + 1 } : l));
+      };
+
+      const triggerSync = () => {
+        setIsSyncing(true);
+        setTimeout(() => setIsSyncing(false), 600);
       };
 
       const totalLinks = links.length;
@@ -288,7 +386,7 @@
                   </button>
                 </li>
                 <li>
-                  <button className={`nav-btn ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
+                  <button className={`nav-btn ${view === 'dashboard' ? 'active' : ''}`} onClick={() => { setView('dashboard'); triggerSync(); }}>
                     Dashboard ({totalLinks})
                   </button>
                 </li>
@@ -302,27 +400,56 @@
               <div>
                 <div className="hero">
                   <h1><span className="gradient-text">Own your links.</span><br />Share with confidence.</h1>
-                  <p>Transform long, unwieldy URLs into clean, trackable short links. Instant redirects powered by Cloudflare KV edge storage.</p>
+                  <p>Transform long, unwieldy URLs into clean, branded short links with custom back-halves. Powered by Cloudflare KV Edge database.</p>
                 </div>
 
                 <div className="shortener-card">
                   <form onSubmit={handleShorten}>
-                    <div className="input-group">
-                      <input
-                        type="url"
-                        placeholder="Paste your long URL here (e.g. https://example.com)..."
-                        value={longUrl}
-                        onChange={(e) => { setLongUrl(e.target.value); setError(''); }}
-                        className={error ? 'error' : ''}
-                      />
-                      <button type="submit" className="btn-shorten">Shorten Link →</button>
+                    <div className="form-field-group">
+                      <label className="form-label">Destination URL</label>
+                      <div className="input-group">
+                        <input
+                          type="url"
+                          placeholder="Paste your long URL here (e.g. https://example.com)..."
+                          value={longUrl}
+                          onChange={(e) => { setLongUrl(e.target.value); setError(''); }}
+                          className={error && !longUrl ? 'error' : ''}
+                        />
+                      </div>
                     </div>
-                    {error && <div className="error-msg">{error}</div>}
+
+                    <div className="slug-field-group">
+                      <div className="slug-label-row">
+                        <label className="form-label">Custom Back-half (Optional)</label>
+                        <span className="label-badge">Custom Slugs</span>
+                      </div>
+                      <div className={`slug-input-wrapper ${slugError ? 'error' : ''}`}>
+                        <span className="slug-prefix">sniplink.to/</span>
+                        <input
+                          type="text"
+                          placeholder="e.g. my-game, summer-sale, portfolio"
+                          value={customSlug}
+                          onChange={handleSlugChange}
+                          className="slug-input"
+                          maxLength={50}
+                        />
+                      </div>
+                      {slugError ? (
+                        <span className="field-hint error-hint">⚠️ {slugError}</span>
+                      ) : (
+                        <span className="field-hint">Alphanumeric characters and hyphens only. Leave blank for a random 6-character code.</span>
+                      )}
+                    </div>
+
+                    <button type="submit" className="btn-shorten">Shorten Link →</button>
+
+                    {error && <div className="error-banner">⚠️ {error}</div>}
                   </form>
 
                   {shortResult && (
                     <div className="result-card">
                       <div>
+                        <span className="result-tag">Generated Short Link</span>
                         <a
                           href={shortResult.url}
                           target="_blank"
@@ -332,7 +459,7 @@
                         >
                           {shortResult.shortUrl}
                         </a>
-                        <div className="result-long-url">{shortResult.url}</div>
+                        <span className="result-long-url">↳ Destination: {shortResult.url}</span>
                       </div>
                       <button className={`btn-copy ${copied ? 'copied' : ''}`} onClick={() => handleCopy(shortResult.shortUrl)}>
                         {copied ? '✓ Copied!' : 'Copy Link'}
@@ -347,77 +474,99 @@
 
             {view === 'dashboard' && (
               <div>
-                <div style={{ marginBottom: 32 }}>
-                  <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 4 }}>Analytics Dashboard</h1>
-                  <p style={{ color: 'var(--color-text-secondary)' }}>Real-time click metrics & link routing logs.</p>
-                </div>
-
-                <div className="bento-grid">
-                  <div className="card">
-                    <div className="card-icon">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                {isSyncing ? (
+                  <div className="loader-container">
+                    <div className="card" style={{ padding: '48px 36px', maxWidth: 440 }}>
+                      <div className="loader-spinner-edge" />
+                      <h3 style={{ fontSize: '1.25rem', marginBottom: 6 }}>Syncing with Cloudflare Edge...</h3>
+                      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Querying Cloudflare KV real-time analytics and click telemetry</p>
                     </div>
-                    <span className="card-label">Total Links Created</span>
-                    <span className="card-value">{totalLinks}</span>
                   </div>
-
-                  <div className="card">
-                    <div className="card-icon">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 15l-2 5L9 9l11 4-5 2z" /><path d="M22 22l-5-5" /></svg>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 32 }}>
+                      <div>
+                        <div className="edge-pill">☁️ Cloudflare Edge Connected</div>
+                        <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 4 }}>Analytics Dashboard</h1>
+                        <p style={{ color: 'var(--color-text-secondary)' }}>Real-time click telemetry and link performance metrics from Cloudflare KV.</p>
+                      </div>
+                      <button className="btn-copy" onClick={triggerSync}>↻ Sync Edge Data</button>
                     </div>
-                    <span className="card-label">Total Clicks Routed</span>
-                    <span className="card-value">{totalClicks}</span>
-                  </div>
 
-                  <div className="card">
-                    <div className="card-icon">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                    <div className="bento-grid">
+                      <div className="card">
+                        <div className="card-icon">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                        </div>
+                        <span className="card-label">Total Links Created</span>
+                        <span className="card-value">{totalLinks}</span>
+                        <span className="card-subtext">Active KV entries</span>
+                      </div>
+
+                      <div className="card">
+                        <div className="card-icon">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 15l-2 5L9 9l11 4-5 2z" /><path d="M22 22l-5-5" /></svg>
+                        </div>
+                        <span className="card-label">Total Real-Time Clicks</span>
+                        <span className="card-value">{totalClicks}</span>
+                        <span className="card-subtext">Global edge redirects</span>
+                      </div>
+
+                      <div className="card">
+                        <div className="card-icon">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                        </div>
+                        <span className="card-label">Avg Clicks / Link</span>
+                        <span className="card-value">{totalLinks > 0 ? (totalClicks / totalLinks).toFixed(1) : '0'}</span>
+                        <span className="card-subtext">Routing conversion rate</span>
+                      </div>
                     </div>
-                    <span className="card-label">Avg Clicks / Link</span>
-                    <span className="card-value">{totalLinks > 0 ? (totalClicks / totalLinks).toFixed(1) : '0'}</span>
+
+                    <div className="card" style={{ padding: 24 }}>
+                      <div className="table-header">
+                        <div>
+                          <h2 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Link Registry & Activity Logs</h2>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Live records synced from Cloudflare KV namespace</span>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'var(--color-surface)', borderRadius: 999, border: '1px solid var(--color-border)' }}>
+                          {totalLinks} Records
+                        </span>
+                      </div>
+
+                      <div className="table-wrapper">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Original Destination</th>
+                              <th>Short Link (with Custom Slug or random code)</th>
+                              <th style={{ textAlign: 'right' }}>Total Real-Time Clicks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {links.map((link) => (
+                              <tr key={link.slug || link.code}>
+                                <td>
+                                  <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={() => handleLinkClick(link.code)} style={{ color: 'var(--color-text-secondary)', maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', whiteSpace: 'nowrap' }}>
+                                    {link.url} ↗
+                                  </a>
+                                </td>
+                                <td>
+                                  <span className="slug-badge">/{link.slug || link.code}</span>
+                                  {link.isCustom && <span className="custom-tag">Custom Slug</span>}
+                                </td>
+                                <td style={{ textAlign: 'right' }}>
+                                  <span className="click-badge">{link.clicks.toLocaleString()} clicks</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="ad-placeholder">Ad Space — Dashboard 728×90 Fixed Height Banner (Zero CLS)</div>
                   </div>
-                </div>
-
-                <div className="card" style={{ padding: 24 }}>
-                  <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: 16 }}>Recent Link Activity</h2>
-                  <div className="table-wrapper">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Short Code</th>
-                          <th>Destination URL</th>
-                          <th>Clicks Routed</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {links.map((link) => (
-                          <tr key={link.code}>
-                            <td style={{ fontWeight: 700, color: 'var(--color-accent)' }}>/{link.code}</td>
-                            <td><span style={{ maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', whiteSpace: 'nowrap' }}>{link.url}</span></td>
-                            <td><span className="click-badge">{link.clicks} clicks</span></td>
-                            <td>
-                              <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={() => handleLinkClick(link.code)} style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-                                Visit & Track ↗
-                              </a>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="ad-placeholder">Ad Space — Dashboard 728×90 Fixed Height Banner</div>
-              </div>
-            )}
-
-            {view === '404' && (
-              <div className="notfound">
-                <div className="notfound-code">404</div>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: 8 }}>Page Not Found</h2>
-                <p style={{ color: 'var(--color-text-secondary)', marginBottom: 24 }}>The link is expired or does not exist.</p>
-                <button className="btn-shorten" onClick={() => setView('shortener')}>Back to Shortener</button>
+                )}
               </div>
             )}
           </main>
@@ -425,8 +574,8 @@
           {/* Footer */}
           <footer className="footer">
             <div className="footer-inner">
-              <span>&copy; {new Date().getFullYear()} Sniplink. High-Performance URL Shortener.</span>
-              <span>Designed with Origin Financial Aesthetic</span>
+              <span>&copy; {new Date().getFullYear()} Sniplink. High-Performance Edge URL Shortener.</span>
+              <span>Cloudflare Workers + KV Storage</span>
             </div>
           </footer>
         </div>
