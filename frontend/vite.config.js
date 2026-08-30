@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    minify: 'esbuild' // Explicitly use esbuild to avoid the Terser dependency trap!
-  }
-})
+    outDir: 'dist',
+    sourcemap: false,
+  },
+});
