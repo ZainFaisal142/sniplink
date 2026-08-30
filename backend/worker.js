@@ -1,24 +1,22 @@
 /**
  * ===================================================================
- * Sniplink — Cloudflare Worker (Serverless Backend)
+ * FILE 5: /worker/worker.js
+ * Cloudflare Worker Serverless Backend with LINKS_KV Storage
  * ===================================================================
  * 
- * Production-ready serverless backend for Sniplink URL shortener.
- * Uses Cloudflare KV ('URL_DB') for high-speed edge lookups, click
- * tracking, and redirection.
- * 
- * Features:
- *  1. Global CORS preflight (OPTIONS 200) & CORS headers on all API responses.
- *  2. POST /api/shorten   -> Validates URL, generates 6-char slug, saves to KV,
- *                            initializes clicks:shortCode to '0', returns { shortCode }.
- *  3. GET /api/analytics -> Lists KV keys, filters out 'clicks:', gathers URLs
- *                            and click counts, returns clean JSON array for Dashboard.
- *  4. GET /:shortCode    -> Non-blocking click increment via ctx.waitUntil(),
- *                            instant 302 redirect to destination URL,
- *                            or 302 redirect to https://sniplink-zain.vercel.app/404.
+ * Endpoints:
+ *  1. OPTIONS (Global) -> Returns 200 with CORS headers
+ *  2. POST /api/shorten -> Validates URL, generates 6-char code, stores
+ *                          JSON payload { url, clicks: 0, createdAt },
+ *                          returns shortCode.
+ *  3. GET /api/stats    -> Lists all active keys in LINKS_KV, returns
+ *                          aggregated array of link metrics.
+ *  4. GET /:shortCode   -> Async increments click count via ctx.waitUntil(),
+ *                          performs fast 302 redirect to destination,
+ *                          or 302 redirect to frontend 404.
  */
 
-/* ── Global CORS Headers ───────────────────────────────────────── */
+/* ── 1. Global CORS Configuration ──────────────────────────────── */
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -26,13 +24,13 @@ const CORS_HEADERS = {
 };
 
 /**
- * Helper to build JSON Response with CORS headers.
- * @param {any} data
+ * Creates a JSON response with full CORS headers.
+ * @param {any} body
  * @param {number} status
  * @returns {Response}
  */
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json',
@@ -42,8 +40,7 @@ function jsonResponse(data, status = 200) {
 }
 
 /**
- * Handle CORS preflight (OPTIONS) request.
- * Returns 200 OK with the required CORS headers.
+ * Handles CORS Preflight (OPTIONS) requests.
  * @returns {Response}
  */
 function handleCorsPreflight() {
@@ -54,7 +51,7 @@ function handleCorsPreflight() {
 }
 
 /**
- * Generates a cryptographically secure 6-character alphanumeric short code.
+ * Generates a cryptographically secure 6-character alphanumeric slug.
  * @param {number} length
  * @returns {string}
  */
@@ -80,25 +77,25 @@ function isValidUrl(str) {
 }
 
 /**
- * Retrieves the KV namespace instance (bound as URL_DB).
+ * Retrieves the Cloudflare KV namespace instance bound under LINKS_KV or URL_DB.
  * @param {object} env
  * @returns {KVNamespace}
  */
 function getKV(env) {
-  const kv = env?.URL_DB || env?.LINKS_KV || (typeof URL_DB !== 'undefined' ? URL_DB : null);
+  const kv = env?.LINKS_KV || env?.URL_DB || (typeof LINKS_KV !== 'undefined' ? LINKS_KV : null);
   if (!kv) {
-    throw new Error('KV namespace binding "URL_DB" not found. Please ensure it is bound in wrangler.toml or Cloudflare dashboard.');
+    throw new Error('KV namespace binding "LINKS_KV" not found. Please ensure it is bound in wrangler.toml.');
   }
   return kv;
 }
 
-/* ── Main Worker Export ────────────────────────────────────────── */
+/* ── Main Cloudflare Worker Handler ────────────────────────────── */
 export default {
   /**
-   * Main Fetch Handler
+   * Main Fetch Handler (ES Module Syntax)
    * @param {Request} request
    * @param {object} env - Cloudflare Worker environment bindings
-   * @param {ExecutionContext} ctx - Execution context for background tasks (waitUntil)
+   * @param {ExecutionContext} ctx - Execution context for background tasks
    * @returns {Promise<Response>}
    */
   async fetch(request, env, ctx) {
@@ -106,36 +103,36 @@ export default {
     const { pathname } = url;
     const method = request.method.toUpperCase();
 
-    // 1. Global CORS Preflight Handling
+    // 1. Handle CORS Preflight Requests
     if (method === 'OPTIONS') {
       return handleCorsPreflight();
     }
 
-    /* ── 2. API Endpoint: POST /api/shorten ──────────────────────── */
+    /* ── 2. Endpoint: POST /api/shorten ─────────────────────────── */
     if (method === 'POST' && pathname === '/api/shorten') {
       try {
         const kv = getKV(env);
         let body;
-        
+
         try {
           body = await request.json();
         } catch {
-          return jsonResponse({ error: 'Invalid JSON payload in request body.' }, 400);
+          return jsonResponse({ error: 'Invalid JSON payload.' }, 400);
         }
 
         const targetUrl = (body?.url || body?.longUrl || '').trim();
 
         // Validate presence of URL
         if (!targetUrl) {
-          return jsonResponse({ error: 'Target URL is required.' }, 400);
+          return jsonResponse({ error: 'URL is required.' }, 400);
         }
 
-        // Validate format (http / https)
+        // Validate URL format (http / https)
         if (!isValidUrl(targetUrl)) {
           return jsonResponse({ error: 'Invalid URL format. Must start with http:// or https://' }, 400);
         }
 
-        // Generate unique 6-character random alphanumeric short code
+        // Generate unique 6-character alphanumeric shortcode (with collision retries)
         let shortCode = '';
         let attempts = 0;
         do {
@@ -146,146 +143,159 @@ export default {
         } while (attempts < 5);
 
         if (attempts >= 5) {
-          return jsonResponse({ error: 'Failed to generate unique short code. Please try again.' }, 500);
+          return jsonResponse({ error: 'Could not generate a unique short code. Please try again.' }, 500);
         }
 
-        // Store mapping in Cloudflare KV: Key = shortCode, Value = targetUrl
-        await kv.put(shortCode, targetUrl);
+        // Store JSON payload in LINKS_KV
+        const record = {
+          url: targetUrl,
+          clicks: 0,
+          createdAt: Date.now(),
+        };
 
-        // Initialize click counter for this link in KV: Key = 'clicks:shortCode', Value = '0'
+        await kv.put(shortCode, JSON.stringify(record));
         await kv.put(`clicks:${shortCode}`, '0');
 
-        // Return 200 OK JSON response containing the generated shortCode
         return jsonResponse({
           shortCode,
+          code: shortCode,
           shortUrl: `${url.origin}/${shortCode}`,
           originalUrl: targetUrl,
         }, 200);
 
       } catch (err) {
-        return jsonResponse({ error: err.message || 'Internal server error while shortening URL.' }, 500);
+        return jsonResponse({ error: err.message || 'Server error while shortening URL.' }, 500);
       }
     }
 
-    /* ── 3. API Endpoint: GET /api/analytics ─────────────────────── */
-    if (method === 'GET' && (pathname === '/api/analytics' || pathname === '/api/stats')) {
+    /* ── 3. Endpoint: GET /api/stats (and /api/analytics) ──────── */
+    if (method === 'GET' && (pathname === '/api/stats' || pathname === '/api/analytics')) {
       try {
         const kv = getKV(env);
 
-        // List all keys from Cloudflare KV
+        // List all active keys from LINKS_KV
         const listResult = await kv.list();
         const keys = listResult.keys || [];
 
-        // Filter out click-metadata keys starting with "clicks:"
-        const linkKeys = keys.filter((k) => !k.name.startsWith('clicks:'));
+        // Filter out auxiliary click-counter keys
+        const primaryKeys = keys.filter((k) => !k.name.startsWith('clicks:'));
+        const aggregatedList = [];
 
-        // Retrieve long URL and corresponding click count for each key
-        const analyticsList = [];
-
-        for (const key of linkKeys) {
+        for (const key of primaryKeys) {
           const shortCode = key.name;
-          const rawValue = await kv.get(shortCode);
-          if (!rawValue) continue;
+          const raw = await kv.get(shortCode);
+          if (!raw) continue;
 
-          // Retrieve click count from 'clicks:shortCode'
-          const clicksStr = await kv.get(`clicks:${shortCode}`);
-          const clicks = clicksStr !== null ? parseInt(clicksStr, 10) || 0 : 0;
+          let destinationUrl = raw;
+          let clicks = 0;
+          let createdAt = null;
 
-          let originalUrl = rawValue;
           try {
-            // Handle if value was stored as JSON or plain string
-            const parsed = JSON.parse(rawValue);
-            if (parsed && parsed.url) {
-              originalUrl = parsed.url;
-            }
+            const record = JSON.parse(raw);
+            destinationUrl = record.url || raw;
+            clicks = typeof record.clicks === 'number' ? record.clicks : 0;
+            createdAt = record.createdAt || null;
           } catch {
-            originalUrl = rawValue;
+            destinationUrl = raw;
           }
 
-          analyticsList.push({
+          // Check if separate click counter exists and is higher
+          try {
+            const clickStr = await kv.get(`clicks:${shortCode}`);
+            if (clickStr !== null) {
+              const directClicks = parseInt(clickStr, 10) || 0;
+              clicks = Math.max(clicks, directClicks);
+            }
+          } catch (e) {}
+
+          aggregatedList.push({
             shortCode,
             code: shortCode,
-            slug: shortCode,
-            originalUrl,
-            url: originalUrl,
+            url: destinationUrl,
+            originalUrl: destinationUrl,
             shortUrl: `${url.origin}/${shortCode}`,
             clicks,
+            createdAt,
           });
         }
 
-        // Return clean JSON array representing all shortened links and global clicks
-        return jsonResponse(analyticsList, 200);
+        // Sort newest first
+        aggregatedList.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        return jsonResponse(aggregatedList, 200);
 
       } catch (err) {
-        return jsonResponse({ error: err.message || 'Failed to retrieve analytics from Cloudflare KV.' }, 500);
+        return jsonResponse({ error: err.message || 'Failed to fetch metrics from LINKS_KV.' }, 500);
       }
     }
 
-    /* ── 4. Redirection Route: GET /:shortCode ───────────────────── */
+    /* ── 4. Dynamic Redirector: GET /:shortCode ─────────────────── */
     if (method === 'GET' && pathname.length > 1 && !pathname.startsWith('/api/')) {
-      const shortCode = pathname.slice(1); // Strip leading slash
+      const shortCode = pathname.slice(1); // Remove leading slash
 
       try {
         const kv = getKV(env);
+        const raw = await kv.get(shortCode);
 
-        // Query Cloudflare KV for the matching long URL destination
-        const rawDestination = await kv.get(shortCode);
+        if (raw) {
+          let destinationUrl = raw;
+          let currentRecord = null;
 
-        if (rawDestination) {
-          let destinationUrl = rawDestination;
           try {
-            const parsed = JSON.parse(rawDestination);
-            if (parsed && parsed.url) {
-              destinationUrl = parsed.url;
+            currentRecord = JSON.parse(raw);
+            if (currentRecord && currentRecord.url) {
+              destinationUrl = currentRecord.url;
             }
           } catch {
-            destinationUrl = rawDestination;
+            destinationUrl = raw;
           }
 
-          // Asynchronously increment click count in the background using ctx.waitUntil
-          const incrementTask = async () => {
+          // Asynchronously increment click count in the background using ctx.waitUntil()
+          const incrementClickTask = async () => {
             try {
-              const currentClicksStr = await kv.get(`clicks:${shortCode}`);
-              const currentClicks = currentClicksStr !== null ? parseInt(currentClicksStr, 10) || 0 : 0;
-              await kv.put(`clicks:${shortCode}`, String(currentClicks + 1));
-            } catch (clickErr) {
-              console.error(`Failed to increment clicks for ${shortCode}:`, clickErr);
+              if (currentRecord) {
+                currentRecord.clicks = (currentRecord.clicks || 0) + 1;
+                await kv.put(shortCode, JSON.stringify(currentRecord));
+              }
+              const clickStr = await kv.get(`clicks:${shortCode}`);
+              const count = clickStr !== null ? parseInt(clickStr, 10) || 0 : 0;
+              await kv.put(`clicks:${shortCode}`, String(count + 1));
+            } catch (err) {
+              console.error(`Click increment error for ${shortCode}:`, err);
             }
           };
 
           if (ctx && typeof ctx.waitUntil === 'function') {
-            ctx.waitUntil(incrementTask());
+            ctx.waitUntil(incrementClickTask());
           } else {
-            incrementTask();
+            incrementClickTask();
           }
 
-          // Immediately perform a fast 302 Redirect to destination URL
+          // Immediately issue fast HTTP 302 redirect
           return Response.redirect(destinationUrl, 302);
         } else {
-          // Short code not found in KV -> 302 Redirect to frontend's branded 404 page
+          // Short code not found -> 302 redirect to Vercel frontend 404
           return Response.redirect('https://sniplink-zain.vercel.app/404', 302);
         }
 
       } catch (err) {
-        // Fallback on error -> redirect to 404 page
         return Response.redirect('https://sniplink-zain.vercel.app/404', 302);
       }
     }
 
-    // Default root / fallback response
+    // Root Welcome Endpoint
     if (pathname === '/' || pathname === '') {
       return jsonResponse({
-        service: 'Sniplink Edge API',
-        status: 'operational',
+        service: 'SnipLink Edge Shortener API',
+        status: 'online',
         endpoints: {
           shorten: 'POST /api/shorten',
-          analytics: 'GET /api/analytics',
+          stats: 'GET /api/stats',
           redirect: 'GET /:shortCode',
         },
       }, 200);
     }
 
-    // Fallback 404 for unhandled API routes
-    return jsonResponse({ error: 'Endpoint not found.' }, 404);
+    return jsonResponse({ error: 'Route not found.' }, 404);
   },
 };

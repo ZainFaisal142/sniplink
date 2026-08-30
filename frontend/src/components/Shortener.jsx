@@ -1,7 +1,21 @@
-import { useState, useCallback } from 'react';
+/**
+ * ===================================================================
+ * FILE 2: /frontend/src/components/Shortener.jsx
+ * High-Performance Edge URL Shortener Component (Origin Financial Aesthetic)
+ * ===================================================================
+ */
+
+import React, { useState } from 'react';
 import { shortenUrl } from '../services/apiService';
 
 /* ── Inline SVG Icons ──────────────────────────────────────────── */
+const ArrowIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12" />
+    <polyline points="12 5 19 12 12 19" />
+  </svg>
+);
+
 const ClipboardIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -15,17 +29,18 @@ const CheckIcon = () => (
   </svg>
 );
 
-const ArrowIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="5" y1="12" x2="19" y2="12" />
-    <polyline points="12 5 19 12 12 19" />
+const AlertIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
   </svg>
 );
 
-/* ── URL Validator ─────────────────────────────────────────────── */
-function isValidUrl(str) {
+/* ── Strict URL Validator ──────────────────────────────────────── */
+function isValidHttpUrl(string) {
   try {
-    const url = new URL(str);
+    const url = new URL(string);
     return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
     return false;
@@ -36,12 +51,12 @@ function isValidUrl(str) {
 export default function Shortener() {
   const [longUrl, setLongUrl] = useState('');
   const [shortUrl, setShortUrl] = useState('');
-  const [originalUrl, setOriginalUrl] = useState('');
+  const [originalDestination, setOriginalDestination] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const handleSubmit = useCallback(async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setShortUrl('');
@@ -49,54 +64,56 @@ export default function Shortener() {
 
     const trimmed = longUrl.trim();
 
+    // Strict URL Validation
     if (!trimmed) {
-      setError('Please enter a URL.');
+      setError('Please paste or type a destination URL.');
       return;
     }
 
-    if (!isValidUrl(trimmed)) {
-      setError('Invalid URL. Must start with http:// or https://');
+    if (!isValidHttpUrl(trimmed)) {
+      setError('Invalid URL format. Destination URL must start with http:// or https://');
       return;
     }
 
     setLoading(true);
 
     try {
-      const data = await shortenUrl(trimmed);
-      if (!data || !data.shortUrl) {
-        throw new Error('Failed to generate short link.');
+      const result = await shortenUrl(trimmed);
+      if (!result || !result.shortUrl) {
+        throw new Error('Failed to generate short link from the server.');
       }
-      setShortUrl(data.shortUrl);
-      setOriginalUrl(trimmed);
+      setShortUrl(result.shortUrl);
+      setOriginalDestination(trimmed);
     } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.');
+      setError(err.message || 'An unexpected error occurred while shortening the link.');
     } finally {
       setLoading(false);
     }
-  }, [longUrl]);
+  };
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(shortUrl);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2200);
     } catch {
-      const el = document.createElement('textarea');
-      el.value = shortUrl;
-      el.style.position = 'fixed';
-      el.style.opacity = '0';
-      document.body.appendChild(el);
-      el.select();
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = shortUrl;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
       document.execCommand('copy');
-      document.body.removeChild(el);
+      document.body.removeChild(textarea);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2200);
     }
-  }, [shortUrl]);
+  };
 
   return (
     <section className="shortener-page fade-in">
-      {/* Hero */}
+      {/* Hero Branding */}
       <div className="shortener-hero">
         <h1>
           <span className="gradient-text">Own your links.</span>
@@ -105,48 +122,66 @@ export default function Shortener() {
         </h1>
         <p>
           Transform long, unwieldy URLs into clean, trackable short links.
-          Lightning-fast redirects powered by the edge.
+          Lightning-fast redirects powered by Cloudflare KV Edge storage.
         </p>
       </div>
 
-      {/* Shortener Card */}
+      {/* Origin Financial Input Card */}
       <div className="shortener-card">
-        <form onSubmit={handleSubmit}>
-          <div className="input-group">
-            <input
-              type="url"
-              value={longUrl}
-              onChange={(e) => { setLongUrl(e.target.value); setError(''); }}
-              placeholder="Paste your long URL here (e.g. https://example.com)..."
-              className={error ? 'input-error' : ''}
-              aria-label="Enter a URL to shorten"
-              autoFocus
-            />
-            <button
-              type="submit"
-              className="btn-shorten"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <span className="loader-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                  Shortening...
-                </>
-              ) : (
-                <>
-                  Shorten
-                  <ArrowIcon />
-                </>
-              )}
-            </button>
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="form-field-group">
+            <label htmlFor="urlInput" className="form-label">
+              Destination URL
+            </label>
+            <div className="input-group">
+              <input
+                id="urlInput"
+                type="url"
+                value={longUrl}
+                onChange={(e) => {
+                  setLongUrl(e.target.value);
+                  if (error) setError('');
+                }}
+                placeholder="Paste your long URL here (e.g. https://example.com/project)..."
+                className={error ? 'input-error' : ''}
+                aria-label="Enter destination URL to shorten"
+                autoFocus
+                required
+              />
+              <button
+                type="submit"
+                className="btn-shorten"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <span className="loader-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                    <span>Shortening...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Shorten</span>
+                    <ArrowIcon />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-          {error && <span className="error-text" role="alert">{error}</span>}
+
+          {/* Validation & Error Alert */}
+          {error && (
+            <div className="error-banner" role="alert">
+              <AlertIcon />
+              <span>{error}</span>
+            </div>
+          )}
         </form>
 
-        {/* Result */}
+        {/* Shortened URL Result Card */}
         {shortUrl && (
           <div className="result-card">
             <div className="result-info">
+              <span className="result-tag">Your Active Edge Short Link</span>
               <a
                 href={shortUrl}
                 target="_blank"
@@ -155,24 +190,39 @@ export default function Shortener() {
               >
                 {shortUrl}
               </a>
-              <span className="result-long-url" title={originalUrl}>
-                {originalUrl}
+              <span className="result-long-url" title={originalDestination}>
+                ↳ Destination: {originalDestination}
               </span>
             </div>
+
             <button
               className={`btn-copy ${copied ? 'copied' : ''}`}
               onClick={handleCopy}
               aria-label="Copy short URL to clipboard"
             >
-              {copied ? <><CheckIcon /> Copied!</> : <><ClipboardIcon /> Copy</>}
+              {copied ? (
+                <>
+                  <CheckIcon />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <ClipboardIcon />
+                  <span>Copy</span>
+                </>
+              )}
             </button>
           </div>
         )}
       </div>
 
-      {/* Ad Placeholder — fixed height for zero CLS */}
-      <div className="ad-placeholder" role="complementary" aria-label="Advertisement">
-        Ad Space — 728×90 / Responsive Slot
+      {/* Zero Cumulative Layout Shift (CLS) Compliant Ad Slot */}
+      <div
+        className="ad-placeholder"
+        role="complementary"
+        aria-label="Advertisement Slot"
+      >
+        <span>Ad Space — 728×90 Mobile / 250px Desktop Fixed Slot (Zero CLS)</span>
       </div>
     </section>
   );
