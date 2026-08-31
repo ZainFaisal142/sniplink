@@ -131,7 +131,7 @@ export async function shortenUrl(longUrl) {
   return {
     shortCode,
     code: shortCode,
-    shortUrl: `${fallbackOrigin}/#/r/${shortCode}`,
+    shortUrl: `${fallbackOrigin}/r/${shortCode}`,
     originalUrl: trimmedUrl,
   };
 }
@@ -174,7 +174,7 @@ export async function fetchStats() {
       originalUrl: r.url,
       clicks: Number(r.clicks) || 0,
       createdAt: r.createdAt,
-      shortUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/#/r/${r.code || r.shortCode}`,
+      shortUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${r.code || r.shortCode}`,
     })),
   };
 }

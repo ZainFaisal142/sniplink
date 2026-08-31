@@ -1,12 +1,13 @@
 /**
  * ===================================================================
- * FILE 4: /frontend/src/App.jsx
- * React Router SPA Shell with Sticky Header & Route Configuration
+ * /frontend/src/App.jsx
+ * React Router SPA Shell — Routes + Sticky Header + Footer
+ * BrowserRouter is now provided by main.jsx (no HashRouter here)
  * ===================================================================
  */
 
 import React from 'react';
-import { HashRouter as Router, Routes, Route, NavLink, Link } from 'react-router-dom';
+import { Routes, Route, NavLink, Link } from 'react-router-dom';
 import Shortener from './components/Shortener';
 import Dashboard from './components/Dashboard';
 import NotFound from './components/NotFound';
@@ -36,70 +37,68 @@ const ChartNavIcon = () => (
 
 export default function App() {
   return (
-    <Router>
-      <div className="app">
-        {/* Sticky Premium Navigation Header */}
-        <header className="nav-header">
-          <nav className="nav-inner" aria-label="Main Navigation">
-            {/* Brand Logo with Linear Gradient */}
-            <Link to="/" className="nav-logo" aria-label="SnipLink Home">
-              <BoltIcon />
-              <span>SNIPLINK</span>
-            </Link>
+    <div className="app">
+      {/* Sticky Premium Navigation Header */}
+      <header className="nav-header">
+        <nav className="nav-inner" aria-label="Main Navigation">
+          {/* Brand Logo with Linear Gradient */}
+          <Link to="/" className="nav-logo" aria-label="SnipLink Home">
+            <BoltIcon />
+            <span>SNIPLINK</span>
+          </Link>
 
-            {/* Dynamic Active Navigation Links */}
-            <ul className="nav-links">
-              <li>
-                <NavLink
-                  to="/"
-                  end
-                  className={({ isActive }) => (isActive ? 'active' : '')}
-                >
-                  <LinkNavIcon />
-                  <span>Shortener</span>
-                </NavLink>
-              </li>
-              <li>
-                <NavLink
-                  to="/dashboard"
-                  className={({ isActive }) => (isActive ? 'active' : '')}
-                >
-                  <ChartNavIcon />
-                  <span>Dashboard</span>
-                </NavLink>
-              </li>
-            </ul>
-          </nav>
-        </header>
+          {/* Dynamic Active Navigation Links */}
+          <ul className="nav-links">
+            <li>
+              <NavLink
+                to="/"
+                end
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                <LinkNavIcon />
+                <span>Shortener</span>
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to="/dashboard"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                <ChartNavIcon />
+                <span>Dashboard</span>
+              </NavLink>
+            </li>
+          </ul>
+        </nav>
+      </header>
 
-        {/* Main Content Viewport */}
-        <main className="main-content container">
-          <Routes>
-            {/* 1. Root Path -> Shortener Engine */}
-            <Route path="/" element={<Shortener />} />
+      {/* Main Content Viewport */}
+      <main className="main-content container">
+        <Routes>
+          {/* 1. Root Path -> Shortener Engine */}
+          <Route path="/" element={<Shortener />} />
 
-            {/* 2. Dashboard Path -> Real-Time Analytics */}
-            <Route path="/dashboard" element={<Dashboard />} />
+          {/* 2. Dashboard Path -> Real-Time Analytics */}
+          <Route path="/dashboard" element={<Dashboard />} />
 
-            {/* Local Fallback Redirector Route */}
-            <Route path="/r/:code" element={<Redirector />} />
+          {/* Local Fallback Redirector Route */}
+          <Route path="/r/:code" element={<Redirector />} />
 
-            {/* 3. Catch-All Route -> Custom Branded 404 */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </main>
+          {/* 3. Catch-All Route -> Custom Branded 404 */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
 
-        {/* Global Footer */}
-        <footer className="footer">
-          <div className="footer-inner">
-            <p>&copy; {new Date().getFullYear()} SnipLink. High-Performance Edge URL Shortener & Analytics.</p>
-            <ul className="footer-links">
-              <li><NavLink to="/">Shortener</NavLink></li>
-              <li><NavLink to="/dashboard">Dashboard</NavLink></li>
-            </ul>
-          </div>
-        </footer>
-      </div>
-    </Router>
+      {/* Global Footer */}
+      <footer className="footer">
+        <div className="footer-inner">
+          <p>&copy; {new Date().getFullYear()} SnipLink. High-Performance Edge URL Shortener &amp; Analytics.</p>
+          <ul className="footer-links">
+            <li><NavLink to="/">Shortener</NavLink></li>
+            <li><NavLink to="/dashboard">Dashboard</NavLink></li>
+          </ul>
+        </div>
+      </footer>
+    </div>
   );
 }
