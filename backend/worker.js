@@ -1,7 +1,7 @@
 /**
  * ===================================================================
- * FILE 6: /backend/worker.js (and /worker/worker.js)
- * SnipLink Cloudflare Worker — Edge URL Shortener + Authentication Engine
+ * FILE 4: /backend/worker.js (Synchronized Cloudflare Worker Engine)
+ * SnipLink Cloudflare Worker — Edge Authentication & Scoped KV Database
  * ===================================================================
  */
 
@@ -13,6 +13,7 @@ const CORS_HEADERS = {
 };
 
 const JWT_SECRET = 'sniplink_edge_secret_super_key_2026';
+const STRICT_COM_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$/;
 
 /**
  * Creates a JSON response with full CORS headers.
@@ -84,10 +85,18 @@ async function hashPassword(password, salt) {
 }
 
 /**
- * Base64URL Encoding
+ * Base64URL Encoding & Decoding
  */
 function base64UrlEncode(str) {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlDecode(str) {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
+  return atob(base64);
 }
 
 /**
@@ -117,6 +126,63 @@ async function generateJWT(payload, secret = JWT_SECRET) {
   return `${dataToSign}.${encodedSignature}`;
 }
 
+/**
+ * Verify and Extract User Payload from Authorization Header
+ * @param {Request} request
+ * @returns {Promise<{ email: string, name: string }|null>}
+ */
+async function getAuthenticatedUser(request) {
+  const authHeader = request.headers.get('Authorization') || request.headers.get('authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      if (token.startsWith('mock_jwt_')) {
+        const jsonStr = atob(token.replace('mock_jwt_', '').split('.')[0]);
+        return JSON.parse(jsonStr);
+      }
+      return null;
+    }
+
+    const [encodedHeader, encodedPayload, signature] = parts;
+    const dataToVerify = `${encodedHeader}.${encodedPayload}`;
+
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+
+    const binarySig = base64UrlDecode(signature);
+    const sigArray = new Uint8Array(binarySig.length);
+    for (let i = 0; i < binarySig.length; i++) {
+      sigArray[i] = binarySig.charCodeAt(i);
+    }
+
+    const isValid = await crypto.subtle.verify('HMAC', key, sigArray, enc.encode(dataToVerify));
+    if (!isValid) return null;
+
+    const payload = JSON.parse(base64UrlDecode(encodedPayload));
+    if (payload.exp && Date.now() >= payload.exp * 1000) {
+      return null;
+    }
+
+    return payload;
+  } catch (err) {
+    console.error('JWT verification error:', err);
+    return null;
+  }
+}
+
 /* ── 3. Main Cloudflare Worker Module ──────────────────────────── */
 export default {
   async fetch(request, env, ctx) {
@@ -130,7 +196,7 @@ export default {
     }
 
     /* ═══════════════════════════════════════════════════════════════
-       AUTH ROUTE 1: POST /api/auth/signup
+       AUTH ROUTE 1: POST /api/auth/signup (Strict .com Check)
        ═══════════════════════════════════════════════════════════════ */
     if (method === 'POST' && pathname === '/api/auth/signup') {
       try {
@@ -147,24 +213,29 @@ export default {
         const email = (body?.email || '').trim().toLowerCase();
         const password = body?.password || '';
 
-        // Validation
+        // Strict validation
         if (!name) {
           return jsonResponse({ error: 'Full name is required.' }, 400);
         }
-        if (!email || !email.includes('@') || !email.includes('.')) {
-          return jsonResponse({ error: 'A valid email address is required.' }, 400);
+
+        // Server-Side Strict .com Regex Validation
+        if (!STRICT_COM_EMAIL_REGEX.test(email)) {
+          return jsonResponse({
+            error: 'Invalid email address. Email must strictly end in .com (e.g. user@domain.com).'
+          }, 400);
         }
+
         if (password.length < 6) {
           return jsonResponse({ error: 'Password must be at least 6 characters.' }, 400);
         }
 
-        // Check if user already exists
+        // Check if user already exists in KV
         const existing = await kv.get(`user:${email}`);
         if (existing) {
           return jsonResponse({ error: 'An account with this email already exists.' }, 409);
         }
 
-        // Secure Salt & Hash
+        // Salt and Hash Password
         const salt = generateRandomString(16);
         const passwordHash = await hashPassword(password, salt);
 
@@ -176,10 +247,9 @@ export default {
           createdAt: Date.now(),
         };
 
-        // Store user in KV
         await kv.put(`user:${email}`, JSON.stringify(userRecord));
 
-        // Generate JWT Token (7 Days)
+        // Issue Signed JWT Token (7 Days)
         const exp = Math.floor(Date.now() / 1000) + 86400 * 7;
         const token = await generateJWT({ email, name, exp });
 
@@ -261,16 +331,14 @@ export default {
         }
 
         const email = (body?.email || '').trim().toLowerCase();
-        if (!email || !email.includes('@')) {
-          return jsonResponse({ error: 'Valid email is required.' }, 400);
+        if (!email || !STRICT_COM_EMAIL_REGEX.test(email)) {
+          return jsonResponse({ error: 'Valid .com email is required.' }, 400);
         }
 
-        // Check if user exists (or proceed silently for privacy)
         const rawUser = await kv.get(`user:${email}`);
         const resetToken = generateRandomString(32);
 
         if (rawUser) {
-          // Store reset token in KV with 1-hour expiration
           const resetData = {
             email,
             expiresAt: Date.now() + 3600 * 1000,
@@ -354,7 +422,7 @@ export default {
     }
 
     /* ═══════════════════════════════════════════════════════════════
-       SHORTENER ROUTE: POST /api/shorten
+       SHORTENER ROUTE: POST /api/shorten (User-to-Data KV Mapping)
        ═══════════════════════════════════════════════════════════════ */
     if (method === 'POST' && pathname === '/api/shorten') {
       try {
@@ -376,6 +444,10 @@ export default {
           return jsonResponse({ error: 'Invalid URL format. Must start with http:// or https://' }, 400);
         }
 
+        // Extract Authenticated User from JWT Token
+        const authenticatedUser = await getAuthenticatedUser(request);
+        const ownerEmail = authenticatedUser?.email?.toLowerCase() || 'anonymous';
+
         let shortCode = '';
         let attempts = 0;
         do {
@@ -389,8 +461,11 @@ export default {
           return jsonResponse({ error: 'Could not generate a unique short code. Please try again.' }, 500);
         }
 
+        // Store JSON Payload in Cloudflare KV with Owner Email
         const record = {
+          longUrl: targetUrl,
           url: targetUrl,
+          owner: ownerEmail,
           clicks: 0,
           createdAt: Date.now(),
         };
@@ -403,6 +478,8 @@ export default {
           code: shortCode,
           shortUrl: `${url.origin}/${shortCode}`,
           originalUrl: targetUrl,
+          longUrl: targetUrl,
+          owner: ownerEmail,
         }, 200);
 
       } catch (err) {
@@ -411,62 +488,74 @@ export default {
     }
 
     /* ═══════════════════════════════════════════════════════════════
-       STATS ROUTE: GET /api/stats (and /api/analytics)
+       SCOPED STATS ROUTE: GET /api/stats (Filtered by Authenticated User)
        ═══════════════════════════════════════════════════════════════ */
     if (method === 'GET' && (pathname === '/api/stats' || pathname === '/api/analytics')) {
       try {
         const kv = getKV(env);
+
+        // Verify Authenticated User
+        const authenticatedUser = await getAuthenticatedUser(request);
+        if (!authenticatedUser || !authenticatedUser.email) {
+          return jsonResponse({ error: 'Unauthorized. Valid Bearer token required.' }, 401);
+        }
+
+        const userEmail = authenticatedUser.email.toLowerCase();
         const listResult = await kv.list();
         const keys = listResult.keys || [];
 
-        // Exclude auxiliary keys like clicks:*, user:*, reset:*
+        // Exclude system keys
         const primaryKeys = keys.filter(
           (k) => !k.name.startsWith('clicks:') && !k.name.startsWith('user:') && !k.name.startsWith('reset:')
         );
-        const aggregatedList = [];
+        const scopedList = [];
 
         for (const key of primaryKeys) {
           const shortCode = key.name;
           const raw = await kv.get(shortCode);
           if (!raw) continue;
 
-          let destinationUrl = raw;
-          let clicks = 0;
-          let createdAt = null;
-
+          let record;
           try {
-            const record = JSON.parse(raw);
-            destinationUrl = record.url || raw;
-            clicks = typeof record.clicks === 'number' ? record.clicks : 0;
-            createdAt = record.createdAt || null;
+            record = JSON.parse(raw);
           } catch {
-            destinationUrl = raw;
+            continue;
           }
 
-          try {
-            const clickStr = await kv.get(`clicks:${shortCode}`);
-            if (clickStr !== null) {
-              const directClicks = parseInt(clickStr, 10) || 0;
-              clicks = Math.max(clicks, directClicks);
-            }
-          } catch (e) {}
+          // Strict Scoping: Only include links owned by the authenticated user
+          if (record && record.owner && record.owner.toLowerCase() === userEmail) {
+            let destinationUrl = record.longUrl || record.url || '';
+            let clicks = typeof record.clicks === 'number' ? record.clicks : 0;
+            let createdAt = record.createdAt || null;
 
-          aggregatedList.push({
-            shortCode,
-            code: shortCode,
-            url: destinationUrl,
-            originalUrl: destinationUrl,
-            shortUrl: `${url.origin}/${shortCode}`,
-            clicks,
-            createdAt,
-          });
+            try {
+              const clickStr = await kv.get(`clicks:${shortCode}`);
+              if (clickStr !== null) {
+                const directClicks = parseInt(clickStr, 10) || 0;
+                clicks = Math.max(clicks, directClicks);
+              }
+            } catch (e) {}
+
+            scopedList.push({
+              shortCode,
+              code: shortCode,
+              url: destinationUrl,
+              longUrl: destinationUrl,
+              originalUrl: destinationUrl,
+              owner: userEmail,
+              shortUrl: `${url.origin}/${shortCode}`,
+              clicks,
+              createdAt,
+            });
+          }
         }
 
-        aggregatedList.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        return jsonResponse(aggregatedList, 200);
+        // Sort newest first
+        scopedList.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return jsonResponse(scopedList, 200);
 
       } catch (err) {
-        return jsonResponse({ error: err.message || 'Failed to fetch metrics from LINKS_KV.' }, 500);
+        return jsonResponse({ error: err.message || 'Failed to fetch scoped metrics from LINKS_KV.' }, 500);
       }
     }
 
@@ -486,8 +575,8 @@ export default {
 
           try {
             currentRecord = JSON.parse(raw);
-            if (currentRecord && currentRecord.url) {
-              destinationUrl = currentRecord.url;
+            if (currentRecord && (currentRecord.longUrl || currentRecord.url)) {
+              destinationUrl = currentRecord.longUrl || currentRecord.url;
             }
           } catch {
             destinationUrl = raw;

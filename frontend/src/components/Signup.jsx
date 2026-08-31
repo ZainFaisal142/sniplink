@@ -1,7 +1,8 @@
 /**
  * ===================================================================
  * FILE 1: /frontend/src/components/Signup.jsx
- * Account Creation Component (Origin Financial Dark Aesthetic)
+ * Account Creation Component with Strict .com Email Validation
+ * (Origin Financial Dark Aesthetic: #090D16, #6366F1, #8B5CF6)
  * ===================================================================
  */
 
@@ -64,9 +65,12 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
+/* ── Strict .com Email Regex Validator ─────────────────────────── */
+const STRICT_COM_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$/;
+
 /* ── Password Strength Calculator ──────────────────────────────── */
 function calculatePasswordStrength(pass) {
-  if (!pass) return { score: 0, label: '', color: 'transparent' };
+  if (!pass) return { score: 0, label: '', class: '' };
 
   let score = 0;
   if (pass.length >= 6) score += 1;
@@ -93,6 +97,13 @@ export default function Signup({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Real-time strict validation states
+  const isEmailEntered = formData.email.trim().length > 0;
+  const isEmailValidCom = STRICT_COM_EMAIL_REGEX.test(formData.email.trim());
+  const isPasswordValid = formData.password.length >= 6;
+  const isNameValid = formData.name.trim().length > 0;
+  const isFormValid = isNameValid && isEmailValidCom && isPasswordValid && formData.agreedToTerms;
+
   const strength = calculatePasswordStrength(formData.password);
 
   const handleChange = (e) => {
@@ -109,15 +120,16 @@ export default function Signup({ onLoginSuccess }) {
     setError('');
 
     const { name, email, password, agreedToTerms } = formData;
+    const trimmedEmail = email.trim();
 
-    // 1. Validation Checks
+    // Strict Validation Check
     if (!name.trim()) {
       setError('Please enter your full name.');
       return;
     }
 
-    if (!email.trim() || !email.includes('@') || !email.includes('.')) {
-      setError('Please enter a valid email address.');
+    if (!STRICT_COM_EMAIL_REGEX.test(trimmedEmail)) {
+      setError('Email address must strictly end in .com (e.g. user@domain.com).');
       return;
     }
 
@@ -127,7 +139,7 @@ export default function Signup({ onLoginSuccess }) {
     }
 
     if (!agreedToTerms) {
-      setError('You must agree to the Terms of Service and Privacy Policy to continue.');
+      setError('You must agree to the Terms of Service and Privacy Policy.');
       return;
     }
 
@@ -136,7 +148,7 @@ export default function Signup({ onLoginSuccess }) {
     try {
       await signupUser({
         name: name.trim(),
-        email: email.trim(),
+        email: trimmedEmail.toLowerCase(),
         password,
       });
 
@@ -162,6 +174,7 @@ export default function Signup({ onLoginSuccess }) {
           <p>Join SnipLink for ultra-fast edge link shortening &amp; telemetry.</p>
         </div>
 
+        {/* Global Error Banner */}
         {error && (
           <div className="error-banner" role="alert">
             <AlertIcon />
@@ -186,14 +199,15 @@ export default function Signup({ onLoginSuccess }) {
                 placeholder="Zain Faisal"
                 required
                 autoComplete="name"
+                autoFocus
               />
             </div>
           </div>
 
-          {/* Email Address */}
+          {/* Email Address with Strict .com Validation */}
           <div className="form-group">
             <label htmlFor="signup-email" className="form-label">
-              Email Address
+              Email Address <span style={{ color: 'var(--color-accent)' }}>(Must end in .com)</span>
             </label>
             <div className="input-with-icon">
               <span className="input-icon"><MailIcon /></span>
@@ -203,14 +217,22 @@ export default function Signup({ onLoginSuccess }) {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="name@example.com"
+                placeholder="user@domain.com"
                 required
                 autoComplete="email"
+                className={isEmailEntered && !isEmailValidCom ? 'input-error' : ''}
               />
             </div>
+
+            {/* Real-time strict .com feedback */}
+            {isEmailEntered && !isEmailValidCom && (
+              <span className="error-text" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                Email must end in <strong>.com</strong> (e.g. name@example.com).
+              </span>
+            )}
           </div>
 
-          {/* Password */}
+          {/* Password with Strength Meter */}
           <div className="form-group">
             <label htmlFor="signup-password" className="form-label">
               Password
@@ -223,7 +245,7 @@ export default function Signup({ onLoginSuccess }) {
                 type={showPassword ? 'text' : 'password'}
                 value={formData.password}
                 onChange={handleChange}
-                placeholder="Create a strong password..."
+                placeholder="At least 6 characters"
                 required
                 autoComplete="new-password"
               />
@@ -270,11 +292,12 @@ export default function Signup({ onLoginSuccess }) {
             </label>
           </div>
 
-          {/* Submit Button */}
+          {/* Submit Button - Disabled if strict requirements are not met */}
           <button
             type="submit"
             className="btn-auth-submit"
-            disabled={loading}
+            disabled={loading || !isFormValid}
+            title={!isFormValid ? 'Please complete all required fields with a valid .com email' : 'Create Account'}
           >
             {loading ? (
               <>

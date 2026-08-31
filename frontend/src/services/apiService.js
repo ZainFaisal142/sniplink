@@ -1,9 +1,11 @@
 /**
  * ===================================================================
- * FILE 1: /frontend/src/services/apiService.js
- * Central API Bridge — Cloudflare Edge + Local Storage Resilience
+ * FILE 3: /frontend/src/services/apiService.js
+ * Central API Bridge with Scoped JWT Authorization Headers
  * ===================================================================
  */
+
+import { getToken, getUser } from './authService';
 
 const ENDPOINTS_TO_TRY = [
   import.meta.env.VITE_API_BASE,
@@ -14,18 +16,22 @@ const ENDPOINTS_TO_TRY = [
 const STORAGE_KEY = 'sniplink_local_records';
 
 /**
- * Get stored records or seed with realistic starter links
+ * Get stored records from LocalStorage
  * @returns {Array}
  */
 export function getLocalRecords() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
+      const user = getUser();
+      const ownerEmail = user?.email || 'demo@sniplink.com';
       const initial = [
         {
           code: 'origin',
           shortCode: 'origin',
           url: 'https://www.useorigin.com',
+          longUrl: 'https://www.useorigin.com',
+          owner: ownerEmail,
           clicks: 342,
           createdAt: Date.now() - 86400000 * 2,
         },
@@ -33,6 +39,8 @@ export function getLocalRecords() {
           code: 'github',
           shortCode: 'github',
           url: 'https://github.com',
+          longUrl: 'https://github.com',
+          owner: ownerEmail,
           clicks: 128,
           createdAt: Date.now() - 86400000,
         },
@@ -40,6 +48,8 @@ export function getLocalRecords() {
           code: 'react',
           shortCode: 'react',
           url: 'https://react.dev',
+          longUrl: 'https://react.dev',
+          owner: ownerEmail,
           clicks: 89,
           createdAt: Date.now() - 3600000 * 4,
         },
@@ -66,7 +76,7 @@ export function saveLocalRecords(records) {
 }
 
 /**
- * Generate 6-char random code
+ * Generate 6-character random alphanumeric code
  */
 function generateLocalCode(length = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -78,12 +88,22 @@ function generateLocalCode(length = 6) {
 }
 
 /**
- * 1. Shorten URL via Cloudflare Worker API with local storage backup
+ * 1. Shorten URL via Cloudflare Worker API with JWT Authorization Header
+ * @param {string} longUrl
+ * @returns {Promise<{ shortCode: string, code: string, shortUrl: string, originalUrl: string }>}
  */
 export async function shortenUrl(longUrl) {
   const trimmedUrl = (longUrl || '').trim();
+  const token = getToken();
+  const user = getUser();
+  const owner = user?.email || 'guest';
 
-  // Try available remote Cloudflare Worker endpoints
+  // Construct request headers with Bearer Token if logged in
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   for (const endpoint of ENDPOINTS_TO_TRY) {
     try {
       const controller = new AbortController();
@@ -91,7 +111,7 @@ export async function shortenUrl(longUrl) {
 
       const res = await fetch(`${endpoint}/api/shorten`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ url: trimmedUrl }),
         signal: controller.signal,
       });
@@ -103,13 +123,15 @@ export async function shortenUrl(longUrl) {
         const code = data.shortCode || data.code;
         const shortUrl = data.shortUrl || `${endpoint}/${code}`;
 
-        // Also save to local storage for dashboard resilience
+        // Save scoped record locally for instant UI responsiveness
         const records = getLocalRecords();
         const existingIdx = records.findIndex((r) => (r.code || r.shortCode) === code);
         const item = {
           code,
           shortCode: code,
           url: trimmedUrl,
+          longUrl: trimmedUrl,
+          owner: data.owner || owner,
           shortUrl,
           clicks: Number(data.clicks) || 0,
           createdAt: Date.now(),
@@ -130,12 +152,11 @@ export async function shortenUrl(longUrl) {
         };
       }
     } catch (err) {
-      // Continue to next endpoint or fallback
       console.warn(`Shorten attempt on ${endpoint} failed:`, err.message);
     }
   }
 
-  // Fallback to local storage
+  // Resilient Local Storage Fallback
   const records = getLocalRecords();
   const shortCode = generateLocalCode(6);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -143,6 +164,8 @@ export async function shortenUrl(longUrl) {
     code: shortCode,
     shortCode,
     url: trimmedUrl,
+    longUrl: trimmedUrl,
+    owner,
     clicks: 0,
     createdAt: Date.now(),
   };
@@ -159,17 +182,27 @@ export async function shortenUrl(longUrl) {
 }
 
 /**
- * 2. Fetch stats from Cloudflare Worker or local storage
+ * 2. Fetch User-Scoped Stats via Cloudflare Worker API with JWT Authorization Header
+ * @returns {Promise<{ totalLinks: number, totalClicks: number, links: Array }>}
  */
 export async function fetchStats() {
-  // Try remote endpoints first
+  const token = getToken();
+  const user = getUser();
+  const userEmail = user?.email?.toLowerCase();
+
+  // Construct request headers with Bearer Token
+  const headers = {
+    Accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   for (const endpoint of ENDPOINTS_TO_TRY) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3500);
 
       const res = await fetch(`${endpoint}/api/stats`, {
-        headers: { 'Accept': 'application/json' },
+        headers,
         signal: controller.signal,
       });
 
@@ -179,38 +212,45 @@ export async function fetchStats() {
         const data = await res.json();
         const links = Array.isArray(data) ? data : (Array.isArray(data.links) ? data.links : []);
 
-        if (links.length > 0) {
-          // Merge with local storage
-          const local = getLocalRecords();
-          const merged = [...links];
-          for (const loc of local) {
-            const locCode = loc.code || loc.shortCode;
-            if (!merged.some((m) => (m.code || m.shortCode) === locCode)) {
-              merged.push(loc);
-            }
+        // The backend returns user-scoped links. Cache/merge with local store:
+        const local = getLocalRecords();
+        const merged = [...links];
+        for (const loc of local) {
+          const locCode = loc.code || loc.shortCode;
+          const isUserOwned = !userEmail || (loc.owner && loc.owner.toLowerCase() === userEmail);
+          if (isUserOwned && !merged.some((m) => (m.code || m.shortCode) === locCode)) {
+            merged.push(loc);
           }
-          saveLocalRecords(merged);
-
-          return {
-            totalLinks: merged.length,
-            totalClicks: merged.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
-            links: merged,
-          };
         }
+        saveLocalRecords(merged);
+
+        return {
+          totalLinks: merged.length,
+          totalClicks: merged.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
+          links: merged,
+        };
       }
     } catch (err) {
-      console.warn(`Stats attempt on ${endpoint} failed:`, err.message);
+      console.warn(`Stats fetch from ${endpoint} failed:`, err.message);
     }
   }
 
-  // Always return reliable local storage records with realistic data
+  // Fallback: Return strictly user-scoped local records
   const local = getLocalRecords();
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const formatted = local.map((r) => ({
+
+  const scopedLocal = local.filter((r) => {
+    if (!userEmail) return true;
+    return !r.owner || r.owner.toLowerCase() === userEmail;
+  });
+
+  const formatted = scopedLocal.map((r) => ({
     shortCode: r.shortCode || r.code,
     code: r.code || r.shortCode,
-    url: r.url || r.originalUrl,
-    originalUrl: r.url || r.originalUrl,
+    url: r.url || r.longUrl || r.originalUrl,
+    longUrl: r.longUrl || r.url || r.originalUrl,
+    originalUrl: r.url || r.longUrl || r.originalUrl,
+    owner: r.owner || userEmail || 'user',
     clicks: Number(r.clicks) || 0,
     createdAt: r.createdAt,
     shortUrl: r.shortUrl || `${origin}/r/${r.code || r.shortCode}`,
@@ -232,7 +272,7 @@ export function recordClickAndGetUrl(code) {
   if (item) {
     item.clicks = (item.clicks || 0) + 1;
     saveLocalRecords(records);
-    return item.url;
+    return item.url || item.longUrl;
   }
   return null;
 }

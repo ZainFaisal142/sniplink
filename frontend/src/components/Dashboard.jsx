@@ -1,12 +1,13 @@
 /**
  * ===================================================================
- * /frontend/src/components/Dashboard.jsx
- * Live Analytics Dashboard — Fetches real data from Cloudflare Workers
+ * FILE 2: /frontend/src/components/Dashboard.jsx
+ * Scoped User Analytics Dashboard with Real-Time Cloudflare Edge Sync
  * ===================================================================
  */
 
 import React, { useState, useEffect } from 'react';
 import { fetchStats } from '../services/apiService';
+import { getUser } from '../services/authService';
 
 /* ── Inline SVG Icons ──────────────────────────────────────────── */
 const LinkIcon = () => (
@@ -38,7 +39,7 @@ const ExternalIcon = () => (
   </svg>
 );
 
-/* ── Skeleton Loader ───────────────────────────────────────────── */
+/* ── Skeleton Loading Layout ───────────────────────────────────── */
 function SkeletonLoader() {
   return (
     <section className="dashboard-page fade-in">
@@ -52,7 +53,7 @@ function SkeletonLoader() {
         </div>
       </div>
 
-      {/* Skeleton Metric Cards */}
+      {/* Skeleton Metric Bento Cards */}
       <div className="stats-grid bento-grid">
         <div className="card bento-card skeleton-card">
           <div className="skeleton-line skeleton-sm" />
@@ -80,36 +81,37 @@ export default function Dashboard() {
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const currentUser = getUser();
 
-  /** Load statistics reliably */
+  /** Asynchronous Scoped Fetch */
   async function loadData() {
     try {
       const stats = await fetchStats();
       const items = Array.isArray(stats?.links) ? stats.links : [];
       setLinks(items);
     } catch (err) {
-      console.warn('Dashboard load error:', err);
+      console.warn('Dashboard data fetch note:', err);
     }
   }
 
-  // Initial fetch on mount
+  // Initial mount load
   useEffect(() => {
     loadData().finally(() => setLoading(false));
   }, []);
 
-  // Manual refresh
+  // Manual refresh trigger
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
   };
 
-  // Show skeleton during initial load
+  // Show Skeleton while loading initial edge data
   if (loading) {
     return <SkeletonLoader />;
   }
 
-  /* ── Calculated Metrics ──────────────────────────────────────── */
+  /* ── Scoped Aggregated Metrics ───────────────────────────────── */
   const totalLinks = links.length;
   const totalClicks = links.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0);
 
@@ -119,16 +121,23 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <div>
           <h1>Analytics Dashboard</h1>
-          <p>Real-time click data from Cloudflare Edge.</p>
+          <p>
+            {currentUser?.email ? (
+              <>Showing scoped metrics for <strong>{currentUser.email}</strong></>
+            ) : (
+              'Real-time click data from Cloudflare Edge.'
+            )}
+          </p>
         </div>
         <button
           className={`btn-refresh ${refreshing ? 'spinning' : ''}`}
           onClick={handleRefresh}
           disabled={refreshing}
-          title="Refresh metrics"
+          title="Refresh metrics from Cloudflare Edge"
+          aria-label="Refresh metrics"
         >
           <RefreshIcon />
-          <span>{refreshing ? 'Updating...' : 'Refresh'}</span>
+          <span>{refreshing ? 'Syncing...' : 'Refresh'}</span>
         </button>
       </div>
 
@@ -151,17 +160,17 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Links Table */}
+      {/* Responsive Scoped Table Card */}
       <div className="card table-card">
         <div className="table-header-row">
-          <h2>Link Registry</h2>
-          <span className="record-count-badge">{totalLinks} links</span>
+          <h2>Your Link Registry</h2>
+          <span className="record-count-badge">{totalLinks} {totalLinks === 1 ? 'link' : 'links'}</span>
         </div>
 
         {totalLinks === 0 ? (
           <div className="empty-state">
             <LinkIcon />
-            <p>No shortened links found yet. Create one to get started!</p>
+            <p>You haven't shortened any links yet. Head to the Shortener to create your first link!</p>
           </div>
         ) : (
           <div className="table-wrapper">
@@ -176,7 +185,7 @@ export default function Dashboard() {
               <tbody>
                 {links.map((link, idx) => {
                   const code = link.shortCode || link.code || link.slug || `link-${idx}`;
-                  const dest = link.url || link.originalUrl || '';
+                  const dest = link.longUrl || link.url || link.originalUrl || '';
                   const clickCount = Number(link.clicks) || 0;
                   const shortHref = link.shortUrl || `${window.location.origin}/r/${code}`;
 
@@ -218,9 +227,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Zero CLS Ad Slot */}
+      {/* Zero CLS Ad Slot (Google AdSense Compliant) */}
       <div className="ad-placeholder" role="complementary" aria-label="Advertisement">
-        <span>Ad Space — Zero CLS Banner</span>
+        <span>Ad Space — 728×90 Mobile / 250px Desktop Zero CLS Banner</span>
       </div>
     </section>
   );
