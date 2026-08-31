@@ -73,7 +73,6 @@ export function isAuthenticated() {
     // Decode JWT payload (middle segment)
     const parts = token.split('.');
     if (parts.length !== 3) {
-      // Non-JWT token fallback (e.g. simulated local token)
       return true;
     }
 
@@ -87,7 +86,6 @@ export function isAuthenticated() {
     }
     return true;
   } catch {
-    // If decoding fails, check if user object exists
     return Boolean(getUser());
   }
 }
@@ -157,7 +155,7 @@ export async function signupUser({ name, email, password }) {
       }
       return data;
     } catch (err) {
-      if (err.message && (err.message.includes('registered') || err.message.includes('required') || err.message.includes('password') || err.message.includes('Invalid'))) {
+      if (err.message && (err.message.includes('registered') || err.message.includes('restricted') || err.message.includes('required') || err.message.includes('password') || err.message.includes('Invalid'))) {
         throw err;
       }
       console.warn(`Signup endpoint ${endpoint} failed:`, err.message);

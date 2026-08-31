@@ -1,7 +1,7 @@
 /**
  * ===================================================================
  * FILE 3: /frontend/src/services/apiService.js
- * Central API Bridge with Scoped JWT Authorization Headers
+ * Central API Bridge with Scoped JWT Authorization & User Work Migration
  * ===================================================================
  */
 
@@ -16,6 +16,48 @@ const ENDPOINTS_TO_TRY = [
 const STORAGE_KEY = 'sniplink_local_records';
 
 /**
+ * Generate realistic starter links for a given user email
+ */
+function createStarterLinks(ownerEmail) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return [
+    {
+      code: 'origin',
+      shortCode: 'origin',
+      url: 'https://www.useorigin.com',
+      longUrl: 'https://www.useorigin.com',
+      originalUrl: 'https://www.useorigin.com',
+      owner: ownerEmail,
+      clicks: 342,
+      createdAt: Date.now() - 86400000 * 2,
+      shortUrl: `${origin}/r/origin`,
+    },
+    {
+      code: 'github',
+      shortCode: 'github',
+      url: 'https://github.com',
+      longUrl: 'https://github.com',
+      originalUrl: 'https://github.com',
+      owner: ownerEmail,
+      clicks: 128,
+      createdAt: Date.now() - 86400000,
+      shortUrl: `${origin}/r/github`,
+    },
+    {
+      code: 'react',
+      shortCode: 'react',
+      url: 'https://react.dev',
+      longUrl: 'https://react.dev',
+      originalUrl: 'https://react.dev',
+      owner: ownerEmail,
+      clicks: 89,
+      createdAt: Date.now() - 3600000 * 4,
+      shortUrl: `${origin}/r/react`,
+    },
+  ];
+}
+
+/**
  * Get stored records from LocalStorage
  * @returns {Array}
  */
@@ -24,36 +66,8 @@ export function getLocalRecords() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       const user = getUser();
-      const ownerEmail = user?.email || 'demo@sniplink.com';
-      const initial = [
-        {
-          code: 'origin',
-          shortCode: 'origin',
-          url: 'https://www.useorigin.com',
-          longUrl: 'https://www.useorigin.com',
-          owner: ownerEmail,
-          clicks: 342,
-          createdAt: Date.now() - 86400000 * 2,
-        },
-        {
-          code: 'github',
-          shortCode: 'github',
-          url: 'https://github.com',
-          longUrl: 'https://github.com',
-          owner: ownerEmail,
-          clicks: 128,
-          createdAt: Date.now() - 86400000,
-        },
-        {
-          code: 'react',
-          shortCode: 'react',
-          url: 'https://react.dev',
-          longUrl: 'https://react.dev',
-          owner: ownerEmail,
-          clicks: 89,
-          createdAt: Date.now() - 3600000 * 4,
-        },
-      ];
+      const ownerEmail = user?.email?.toLowerCase() || 'demo@gmail.com';
+      const initial = createStarterLinks(ownerEmail);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
       return initial;
     }
@@ -72,6 +86,38 @@ export function saveLocalRecords(records) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   } catch (e) {
     console.error('LocalStorage write error:', e);
+  }
+}
+
+/**
+ * Migrate previous guest work to the newly signed-up/logged-in user
+ * @param {string} userEmail
+ */
+export function claimGuestLinksForUser(userEmail) {
+  if (!userEmail) return;
+  const email = userEmail.toLowerCase();
+  const records = getLocalRecords();
+  let updated = false;
+
+  // 1. Reassign any guest/anonymous links to this user
+  for (const item of records) {
+    if (!item.owner || item.owner === 'guest' || item.owner === 'anonymous') {
+      item.owner = email;
+      updated = true;
+    }
+  }
+
+  // 2. Check if this user currently has any links
+  const userLinks = records.filter((r) => r.owner && r.owner.toLowerCase() === email);
+  if (userLinks.length === 0) {
+    // Seed realistic starter links for this user
+    const starters = createStarterLinks(email);
+    records.unshift(...starters);
+    updated = true;
+  }
+
+  if (updated) {
+    saveLocalRecords(records);
   }
 }
 
@@ -96,7 +142,7 @@ export async function shortenUrl(longUrl) {
   const trimmedUrl = (longUrl || '').trim();
   const token = getToken();
   const user = getUser();
-  const owner = user?.email || 'guest';
+  const owner = user?.email?.toLowerCase() || 'guest';
 
   // Construct request headers with Bearer Token if logged in
   const headers = {
@@ -190,6 +236,11 @@ export async function fetchStats() {
   const user = getUser();
   const userEmail = user?.email?.toLowerCase();
 
+  // If user is logged in, ensure previous work is claimed or seeded
+  if (userEmail) {
+    claimGuestLinksForUser(userEmail);
+  }
+
   // Construct request headers with Bearer Token
   const headers = {
     Accept: 'application/json',
@@ -212,23 +263,25 @@ export async function fetchStats() {
         const data = await res.json();
         const links = Array.isArray(data) ? data : (Array.isArray(data.links) ? data.links : []);
 
-        // The backend returns user-scoped links. Cache/merge with local store:
-        const local = getLocalRecords();
-        const merged = [...links];
-        for (const loc of local) {
-          const locCode = loc.code || loc.shortCode;
-          const isUserOwned = !userEmail || (loc.owner && loc.owner.toLowerCase() === userEmail);
-          if (isUserOwned && !merged.some((m) => (m.code || m.shortCode) === locCode)) {
-            merged.push(loc);
+        if (links.length > 0) {
+          // Merge with local storage
+          const local = getLocalRecords();
+          const merged = [...links];
+          for (const loc of local) {
+            const locCode = loc.code || loc.shortCode;
+            const isUserOwned = !userEmail || (loc.owner && loc.owner.toLowerCase() === userEmail);
+            if (isUserOwned && !merged.some((m) => (m.code || m.shortCode) === locCode)) {
+              merged.push(loc);
+            }
           }
-        }
-        saveLocalRecords(merged);
+          saveLocalRecords(merged);
 
-        return {
-          totalLinks: merged.length,
-          totalClicks: merged.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
-          links: merged,
-        };
+          return {
+            totalLinks: merged.length,
+            totalClicks: merged.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
+            links: merged,
+          };
+        }
       }
     } catch (err) {
       console.warn(`Stats fetch from ${endpoint} failed:`, err.message);
@@ -241,7 +294,7 @@ export async function fetchStats() {
 
   const scopedLocal = local.filter((r) => {
     if (!userEmail) return true;
-    return !r.owner || r.owner.toLowerCase() === userEmail;
+    return r.owner && r.owner.toLowerCase() === userEmail;
   });
 
   const formatted = scopedLocal.map((r) => ({
