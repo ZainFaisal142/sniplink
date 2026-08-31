@@ -1,33 +1,21 @@
 /**
  * ===================================================================
- * FILE 5: /worker/worker.js
- * Cloudflare Worker Serverless Backend with LINKS_KV Storage
+ * FILE 6: /worker/worker.js (Synchronized Cloudflare Worker Engine)
+ * SnipLink Cloudflare Worker — Edge URL Shortener + Authentication Engine
  * ===================================================================
- * 
- * Endpoints:
- *  1. OPTIONS (Global) -> Returns 200 with CORS headers
- *  2. POST /api/shorten -> Validates URL, generates 6-char code, stores
- *                          JSON payload { url, clicks: 0, createdAt },
- *                          returns shortCode.
- *  3. GET /api/stats    -> Lists all active keys in LINKS_KV, returns
- *                          aggregated array of link metrics.
- *  4. GET /:shortCode   -> Async increments click count via ctx.waitUntil(),
- *                          performs fast 302 redirect to destination,
- *                          or 302 redirect to frontend 404.
  */
 
 /* ── 1. Global CORS Configuration ──────────────────────────────── */
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
 };
+
+const JWT_SECRET = 'sniplink_edge_secret_super_key_2026';
 
 /**
  * Creates a JSON response with full CORS headers.
- * @param {any} body
- * @param {number} status
- * @returns {Response}
  */
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -41,7 +29,6 @@ function jsonResponse(body, status = 200) {
 
 /**
  * Handles CORS Preflight (OPTIONS) requests.
- * @returns {Response}
  */
 function handleCorsPreflight() {
   return new Response(null, {
@@ -51,11 +38,9 @@ function handleCorsPreflight() {
 }
 
 /**
- * Generates a cryptographically secure 6-character alphanumeric slug.
- * @param {number} length
- * @returns {string}
+ * Generates a cryptographically secure random string.
  */
-function generateShortCode(length = 6) {
+function generateRandomString(length = 16) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const randomBytes = new Uint8Array(length);
   crypto.getRandomValues(randomBytes);
@@ -64,8 +49,6 @@ function generateShortCode(length = 6) {
 
 /**
  * Validates that a string is a valid HTTP/HTTPS URL.
- * @param {string} str
- * @returns {boolean}
  */
 function isValidUrl(str) {
   try {
@@ -78,8 +61,6 @@ function isValidUrl(str) {
 
 /**
  * Retrieves the Cloudflare KV namespace instance bound under LINKS_KV or URL_DB.
- * @param {object} env
- * @returns {KVNamespace}
  */
 function getKV(env) {
   const kv = env?.LINKS_KV || env?.URL_DB || (typeof LINKS_KV !== 'undefined' ? LINKS_KV : null);
@@ -89,26 +70,290 @@ function getKV(env) {
   return kv;
 }
 
-/* ── Main Cloudflare Worker Handler ────────────────────────────── */
+/* ── 2. Cryptographic & JWT Edge Helpers ────────────────────────── */
+
+/**
+ * Hash password with salt using Web Crypto SHA-256
+ */
+async function hashPassword(password, salt) {
+  const enc = new TextEncoder();
+  const data = enc.encode(`${salt}:${password}:${salt}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Base64URL Encoding
+ */
+function base64UrlEncode(str) {
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Generate HMAC-SHA256 Signed JWT Token
+ */
+async function generateJWT(payload, secret = JWT_SECRET) {
+  const enc = new TextEncoder();
+  const header = { alg: 'HS256', typ: 'JWT' };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const dataToSign = `${encodedHeader}.${encodedPayload}`;
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signatureBuffer = await crypto.subtle.sign('HMAC', key, enc.encode(dataToSign));
+  const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+  const signatureStr = String.fromCharCode.apply(null, signatureArray);
+  const encodedSignature = base64UrlEncode(signatureStr);
+
+  return `${dataToSign}.${encodedSignature}`;
+}
+
+/* ── 3. Main Cloudflare Worker Module ──────────────────────────── */
 export default {
-  /**
-   * Main Fetch Handler (ES Module Syntax)
-   * @param {Request} request
-   * @param {object} env - Cloudflare Worker environment bindings
-   * @param {ExecutionContext} ctx - Execution context for background tasks
-   * @returns {Promise<Response>}
-   */
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
     const method = request.method.toUpperCase();
 
-    // 1. Handle CORS Preflight Requests
+    // 1. Handle Global CORS Preflight
     if (method === 'OPTIONS') {
       return handleCorsPreflight();
     }
 
-    /* ── 2. Endpoint: POST /api/shorten ─────────────────────────── */
+    /* ═══════════════════════════════════════════════════════════════
+       AUTH ROUTE 1: POST /api/auth/signup
+       ═══════════════════════════════════════════════════════════════ */
+    if (method === 'POST' && pathname === '/api/auth/signup') {
+      try {
+        const kv = getKV(env);
+        let body;
+
+        try {
+          body = await request.json();
+        } catch {
+          return jsonResponse({ error: 'Invalid JSON payload.' }, 400);
+        }
+
+        const name = (body?.name || '').trim();
+        const email = (body?.email || '').trim().toLowerCase();
+        const password = body?.password || '';
+
+        // Validation
+        if (!name) {
+          return jsonResponse({ error: 'Full name is required.' }, 400);
+        }
+        if (!email || !email.includes('@') || !email.includes('.')) {
+          return jsonResponse({ error: 'A valid email address is required.' }, 400);
+        }
+        if (password.length < 6) {
+          return jsonResponse({ error: 'Password must be at least 6 characters.' }, 400);
+        }
+
+        // Check if user already exists
+        const existing = await kv.get(`user:${email}`);
+        if (existing) {
+          return jsonResponse({ error: 'An account with this email already exists.' }, 409);
+        }
+
+        // Secure Salt & Hash
+        const salt = generateRandomString(16);
+        const passwordHash = await hashPassword(password, salt);
+
+        const userRecord = {
+          name,
+          email,
+          passwordHash,
+          salt,
+          createdAt: Date.now(),
+        };
+
+        // Store user in KV
+        await kv.put(`user:${email}`, JSON.stringify(userRecord));
+
+        // Generate JWT Token (7 Days)
+        const exp = Math.floor(Date.now() / 1000) + 86400 * 7;
+        const token = await generateJWT({ email, name, exp });
+
+        return jsonResponse({
+          success: true,
+          message: 'Account created successfully.',
+          token,
+          user: { name, email },
+        }, 201);
+
+      } catch (err) {
+        return jsonResponse({ error: err.message || 'Server error during signup.' }, 500);
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       AUTH ROUTE 2: POST /api/auth/login
+       ═══════════════════════════════════════════════════════════════ */
+    if (method === 'POST' && pathname === '/api/auth/login') {
+      try {
+        const kv = getKV(env);
+        let body;
+
+        try {
+          body = await request.json();
+        } catch {
+          return jsonResponse({ error: 'Invalid JSON payload.' }, 400);
+        }
+
+        const email = (body?.email || '').trim().toLowerCase();
+        const password = body?.password || '';
+        const rememberMe = Boolean(body?.rememberMe);
+
+        if (!email || !password) {
+          return jsonResponse({ error: 'Email and password are required.' }, 400);
+        }
+
+        const rawUser = await kv.get(`user:${email}`);
+        if (!rawUser) {
+          return jsonResponse({ error: 'Invalid email or password.' }, 401);
+        }
+
+        const user = JSON.parse(rawUser);
+        const incomingHash = await hashPassword(password, user.salt);
+
+        if (incomingHash !== user.passwordHash) {
+          return jsonResponse({ error: 'Invalid email or password.' }, 401);
+        }
+
+        // Generate JWT Token (30 Days if rememberMe, else 7 Days)
+        const durationDays = rememberMe ? 30 : 7;
+        const exp = Math.floor(Date.now() / 1000) + 86400 * durationDays;
+        const token = await generateJWT({ email: user.email, name: user.name, exp });
+
+        return jsonResponse({
+          success: true,
+          message: 'Signed in successfully.',
+          token,
+          user: { name: user.name, email: user.email },
+        }, 200);
+
+      } catch (err) {
+        return jsonResponse({ error: err.message || 'Server error during login.' }, 500);
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       AUTH ROUTE 3: POST /api/auth/reset-request
+       ═══════════════════════════════════════════════════════════════ */
+    if (method === 'POST' && pathname === '/api/auth/reset-request') {
+      try {
+        const kv = getKV(env);
+        let body;
+
+        try {
+          body = await request.json();
+        } catch {
+          return jsonResponse({ error: 'Invalid JSON payload.' }, 400);
+        }
+
+        const email = (body?.email || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) {
+          return jsonResponse({ error: 'Valid email is required.' }, 400);
+        }
+
+        const rawUser = await kv.get(`user:${email}`);
+        const resetToken = generateRandomString(32);
+
+        if (rawUser) {
+          const resetData = {
+            email,
+            expiresAt: Date.now() + 3600 * 1000,
+          };
+          await kv.put(`reset:${resetToken}`, JSON.stringify(resetData), { expirationTtl: 3600 });
+        }
+
+        const resetLink = `https://sniplink-zain.vercel.app/reset-password?token=${resetToken}`;
+
+        return jsonResponse({
+          success: true,
+          message: "Check your inbox! We've sent a recovery link.",
+          resetToken,
+          resetLink,
+        }, 200);
+
+      } catch (err) {
+        return jsonResponse({ error: err.message || 'Server error during reset request.' }, 500);
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       AUTH ROUTE 4: POST /api/auth/reset-confirm
+       ═══════════════════════════════════════════════════════════════ */
+    if (method === 'POST' && pathname === '/api/auth/reset-confirm') {
+      try {
+        const kv = getKV(env);
+        let body;
+
+        try {
+          body = await request.json();
+        } catch {
+          return jsonResponse({ error: 'Invalid JSON payload.' }, 400);
+        }
+
+        const token = (body?.token || '').trim();
+        const newPassword = body?.newPassword || '';
+
+        if (!token) {
+          return jsonResponse({ error: 'Reset token is required.' }, 400);
+        }
+        if (newPassword.length < 6) {
+          return jsonResponse({ error: 'Password must be at least 6 characters.' }, 400);
+        }
+
+        const rawReset = await kv.get(`reset:${token}`);
+        if (!rawReset) {
+          return jsonResponse({ error: 'Invalid or expired password reset token.' }, 400);
+        }
+
+        const resetData = JSON.parse(rawReset);
+        if (Date.now() > resetData.expiresAt) {
+          await kv.delete(`reset:${token}`);
+          return jsonResponse({ error: 'Reset token has expired. Please request a new link.' }, 400);
+        }
+
+        const rawUser = await kv.get(`user:${resetData.email}`);
+        if (!rawUser) {
+          return jsonResponse({ error: 'User record not found.' }, 404);
+        }
+
+        const user = JSON.parse(rawUser);
+        const salt = generateRandomString(16);
+        const passwordHash = await hashPassword(newPassword, salt);
+
+        user.passwordHash = passwordHash;
+        user.salt = salt;
+        user.updatedAt = Date.now();
+
+        await kv.put(`user:${resetData.email}`, JSON.stringify(user));
+        await kv.delete(`reset:${token}`);
+
+        return jsonResponse({
+          success: true,
+          message: 'Password updated successfully.',
+        }, 200);
+
+      } catch (err) {
+        return jsonResponse({ error: err.message || 'Server error during password reset.' }, 500);
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       SHORTENER ROUTE: POST /api/shorten
+       ═══════════════════════════════════════════════════════════════ */
     if (method === 'POST' && pathname === '/api/shorten') {
       try {
         const kv = getKV(env);
@@ -122,21 +367,17 @@ export default {
 
         const targetUrl = (body?.url || body?.longUrl || '').trim();
 
-        // Validate presence of URL
         if (!targetUrl) {
           return jsonResponse({ error: 'URL is required.' }, 400);
         }
-
-        // Validate URL format (http / https)
         if (!isValidUrl(targetUrl)) {
           return jsonResponse({ error: 'Invalid URL format. Must start with http:// or https://' }, 400);
         }
 
-        // Generate unique 6-character alphanumeric shortcode (with collision retries)
         let shortCode = '';
         let attempts = 0;
         do {
-          shortCode = generateShortCode(6);
+          shortCode = generateRandomString(6);
           const existing = await kv.get(shortCode);
           if (!existing) break;
           attempts++;
@@ -146,7 +387,6 @@ export default {
           return jsonResponse({ error: 'Could not generate a unique short code. Please try again.' }, 500);
         }
 
-        // Store JSON payload in LINKS_KV
         const record = {
           url: targetUrl,
           clicks: 0,
@@ -168,17 +408,18 @@ export default {
       }
     }
 
-    /* ── 3. Endpoint: GET /api/stats (and /api/analytics) ──────── */
+    /* ═══════════════════════════════════════════════════════════════
+       STATS ROUTE: GET /api/stats (and /api/analytics)
+       ═══════════════════════════════════════════════════════════════ */
     if (method === 'GET' && (pathname === '/api/stats' || pathname === '/api/analytics')) {
       try {
         const kv = getKV(env);
-
-        // List all active keys from LINKS_KV
         const listResult = await kv.list();
         const keys = listResult.keys || [];
 
-        // Filter out auxiliary click-counter keys
-        const primaryKeys = keys.filter((k) => !k.name.startsWith('clicks:'));
+        const primaryKeys = keys.filter(
+          (k) => !k.name.startsWith('clicks:') && !k.name.startsWith('user:') && !k.name.startsWith('reset:')
+        );
         const aggregatedList = [];
 
         for (const key of primaryKeys) {
@@ -199,7 +440,6 @@ export default {
             destinationUrl = raw;
           }
 
-          // Check if separate click counter exists and is higher
           try {
             const clickStr = await kv.get(`clicks:${shortCode}`);
             if (clickStr !== null) {
@@ -219,9 +459,7 @@ export default {
           });
         }
 
-        // Sort newest first
         aggregatedList.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
         return jsonResponse(aggregatedList, 200);
 
       } catch (err) {
@@ -229,9 +467,11 @@ export default {
       }
     }
 
-    /* ── 4. Dynamic Redirector: GET /:shortCode ─────────────────── */
+    /* ═══════════════════════════════════════════════════════════════
+       DYNAMIC REDIRECTOR: GET /:shortCode
+       ═══════════════════════════════════════════════════════════════ */
     if (method === 'GET' && pathname.length > 1 && !pathname.startsWith('/api/')) {
-      const shortCode = pathname.slice(1); // Remove leading slash
+      const shortCode = pathname.slice(1);
 
       try {
         const kv = getKV(env);
@@ -250,7 +490,6 @@ export default {
             destinationUrl = raw;
           }
 
-          // Asynchronously increment click count in the background using ctx.waitUntil()
           const incrementClickTask = async () => {
             try {
               if (currentRecord) {
@@ -271,10 +510,8 @@ export default {
             incrementClickTask();
           }
 
-          // Immediately issue fast HTTP 302 redirect
           return Response.redirect(destinationUrl, 302);
         } else {
-          // Short code not found -> 302 redirect to Vercel frontend 404
           return Response.redirect('https://sniplink-zain.vercel.app/404', 302);
         }
 
@@ -286,9 +523,13 @@ export default {
     // Root Welcome Endpoint
     if (pathname === '/' || pathname === '') {
       return jsonResponse({
-        service: 'SnipLink Edge Shortener API',
+        service: 'SnipLink Edge API',
         status: 'online',
         endpoints: {
+          auth_signup: 'POST /api/auth/signup',
+          auth_login: 'POST /api/auth/login',
+          auth_reset_request: 'POST /api/auth/reset-request',
+          auth_reset_confirm: 'POST /api/auth/reset-confirm',
           shorten: 'POST /api/shorten',
           stats: 'GET /api/stats',
           redirect: 'GET /:shortCode',
