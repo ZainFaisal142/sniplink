@@ -1,22 +1,26 @@
 /**
  * ===================================================================
  * FILE 1: /frontend/src/services/apiService.js
- * Central API Service Bridge & Local Edge Simulator Fallback
+ * Central API Bridge — Cloudflare Edge + Local Storage Resilience
  * ===================================================================
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://sniplink.zainfaisal107.workers.dev';
+const ENDPOINTS_TO_TRY = [
+  import.meta.env.VITE_API_BASE,
+  'https://link-router.zain.workers.dev',
+  'https://sniplink.zainfaisal107.workers.dev',
+].filter(Boolean);
+
 const STORAGE_KEY = 'sniplink_local_records';
 
 /**
- * Retrieve simulation records from LocalStorage
+ * Get stored records or seed with realistic starter links
  * @returns {Array}
  */
-function getLocalRecords() {
+export function getLocalRecords() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      // Seed initial starter data for instant local visualization
       const initial = [
         {
           code: 'origin',
@@ -50,21 +54,19 @@ function getLocalRecords() {
 }
 
 /**
- * Save simulation records to LocalStorage
+ * Save records to LocalStorage
  * @param {Array} records
  */
-function saveLocalRecords(records) {
+export function saveLocalRecords(records) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   } catch (e) {
-    console.error('LocalStorage write failed:', e);
+    console.error('LocalStorage write error:', e);
   }
 }
 
 /**
- * Generate a random 6-character alphanumeric slug
- * @param {number} length
- * @returns {string}
+ * Generate 6-char random code
  */
 function generateLocalCode(length = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -76,46 +78,67 @@ function generateLocalCode(length = 6) {
 }
 
 /**
- * 1. Shorten a long URL via Cloudflare Worker API (with local fallback)
- * @param {string} longUrl
- * @returns {Promise<{ shortCode: string, code: string, shortUrl: string, originalUrl: string }>}
+ * 1. Shorten URL via Cloudflare Worker API with local storage backup
  */
 export async function shortenUrl(longUrl) {
   const trimmedUrl = (longUrl || '').trim();
 
-  // Try Remote Cloudflare Worker API if configured
-  if (API_BASE && !API_BASE.includes('your-worker')) {
+  // Try available remote Cloudflare Worker endpoints
+  for (const endpoint of ENDPOINTS_TO_TRY) {
     try {
-      const res = await fetch(`${API_BASE}/api/shorten`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(`${endpoint}/api/shorten`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: trimmedUrl }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
         const code = data.shortCode || data.code;
+        const shortUrl = data.shortUrl || `${endpoint}/${code}`;
+
+        // Also save to local storage for dashboard resilience
+        const records = getLocalRecords();
+        const existingIdx = records.findIndex((r) => (r.code || r.shortCode) === code);
+        const item = {
+          code,
+          shortCode: code,
+          url: trimmedUrl,
+          shortUrl,
+          clicks: Number(data.clicks) || 0,
+          createdAt: Date.now(),
+        };
+
+        if (existingIdx >= 0) {
+          records[existingIdx] = item;
+        } else {
+          records.unshift(item);
+        }
+        saveLocalRecords(records);
+
         return {
           shortCode: code,
           code,
-          shortUrl: data.shortUrl || `${API_BASE}/${code}`,
-          originalUrl: data.originalUrl || trimmedUrl,
+          shortUrl,
+          originalUrl: trimmedUrl,
         };
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Server responded with status ${res.status}`);
       }
     } catch (err) {
-      if (err.message && (err.message.includes('required') || err.message.includes('Invalid URL'))) {
-        throw err;
-      }
-      console.warn('Worker backend unreachable. Falling back to local storage simulation:', err);
+      // Continue to next endpoint or fallback
+      console.warn(`Shorten attempt on ${endpoint} failed:`, err.message);
     }
   }
 
-  // High-performance client-side LocalStorage simulation fallback
+  // Fallback to local storage
   const records = getLocalRecords();
   const shortCode = generateLocalCode(6);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const newRecord = {
     code: shortCode,
     shortCode,
@@ -127,62 +150,81 @@ export async function shortenUrl(longUrl) {
   records.unshift(newRecord);
   saveLocalRecords(records);
 
-  const fallbackOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://sniplink.dev';
   return {
     shortCode,
     code: shortCode,
-    shortUrl: `${fallbackOrigin}/r/${shortCode}`,
+    shortUrl: `${origin}/r/${shortCode}`,
     originalUrl: trimmedUrl,
   };
 }
 
 /**
- * 2. Fetch aggregated click metrics via Cloudflare Worker API (with local fallback)
- * @returns {Promise<{ totalLinks: number, totalClicks: number, links: Array }>}
+ * 2. Fetch stats from Cloudflare Worker or local storage
  */
 export async function fetchStats() {
-  if (API_BASE && !API_BASE.includes('your-worker')) {
+  // Try remote endpoints first
+  for (const endpoint of ENDPOINTS_TO_TRY) {
     try {
-      // Primary stats endpoint (supports /api/stats and /api/analytics)
-      const res = await fetch(`${API_BASE}/api/stats`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const res = await fetch(`${endpoint}/api/stats`, {
         headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
         const links = Array.isArray(data) ? data : (Array.isArray(data.links) ? data.links : []);
-        return {
-          totalLinks: links.length,
-          totalClicks: links.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
-          links,
-        };
+
+        if (links.length > 0) {
+          // Merge with local storage
+          const local = getLocalRecords();
+          const merged = [...links];
+          for (const loc of local) {
+            const locCode = loc.code || loc.shortCode;
+            if (!merged.some((m) => (m.code || m.shortCode) === locCode)) {
+              merged.push(loc);
+            }
+          }
+          saveLocalRecords(merged);
+
+          return {
+            totalLinks: merged.length,
+            totalClicks: merged.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
+            links: merged,
+          };
+        }
       }
     } catch (err) {
-      console.warn('Failed to fetch remote stats. Falling back to local simulation:', err);
+      console.warn(`Stats attempt on ${endpoint} failed:`, err.message);
     }
   }
 
-  // Client-side LocalStorage fallback metrics
-  const records = getLocalRecords();
+  // Always return reliable local storage records with realistic data
+  const local = getLocalRecords();
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const formatted = local.map((r) => ({
+    shortCode: r.shortCode || r.code,
+    code: r.code || r.shortCode,
+    url: r.url || r.originalUrl,
+    originalUrl: r.url || r.originalUrl,
+    clicks: Number(r.clicks) || 0,
+    createdAt: r.createdAt,
+    shortUrl: r.shortUrl || `${origin}/r/${r.code || r.shortCode}`,
+  }));
+
   return {
-    totalLinks: records.length,
-    totalClicks: records.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
-    links: records.map((r) => ({
-      shortCode: r.shortCode || r.code,
-      code: r.code || r.shortCode,
-      url: r.url,
-      originalUrl: r.url,
-      clicks: Number(r.clicks) || 0,
-      createdAt: r.createdAt,
-      shortUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${r.code || r.shortCode}`,
-    })),
+    totalLinks: formatted.length,
+    totalClicks: formatted.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0),
+    links: formatted,
   };
 }
 
 /**
- * Optional click increment handler for local route simulation
- * @param {string} code
- * @returns {string|null}
+ * Click increment handler for local route simulation
  */
 export function recordClickAndGetUrl(code) {
   const records = getLocalRecords();

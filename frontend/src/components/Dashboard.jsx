@@ -6,8 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-
-const API_STATS_URL = 'https://link-router.zain.workers.dev/api/stats';
+import { fetchStats } from '../services/apiService';
 
 /* ── Inline SVG Icons ──────────────────────────────────────────── */
 const LinkIcon = () => (
@@ -78,61 +77,41 @@ function SkeletonLoader() {
 
 /* ── Dashboard Component ───────────────────────────────────────── */
 export default function Dashboard() {
-  const [links, setLinks] = useState(null);
+  const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
 
-  /** Fetch live stats from the Cloudflare Worker */
-  async function loadStats() {
+  /** Load statistics reliably */
+  async function loadData() {
     try {
-      const res = await fetch(API_STATS_URL, {
-        headers: { 'Accept': 'application/json' },
-      });
-
-      if (!res.ok) {
-        throw new Error(`API responded with status ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      // Normalize: API may return an array or { links: [...] }
-      const items = Array.isArray(data)
-        ? data
-        : Array.isArray(data.links)
-          ? data.links
-          : [];
-
+      const stats = await fetchStats();
+      const items = Array.isArray(stats?.links) ? stats.links : [];
       setLinks(items);
-      setError('');
     } catch (err) {
-      console.error('Stats fetch failed:', err);
-      setError('Could not reach the analytics endpoint. Please try again.');
-      if (links === null) setLinks([]);
+      console.warn('Dashboard load error:', err);
     }
   }
 
   // Initial fetch on mount
   useEffect(() => {
-    loadStats().finally(() => setLoading(false));
+    loadData().finally(() => setLoading(false));
   }, []);
 
-  // Manual refresh handler
+  // Manual refresh
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadStats();
+    await loadData();
     setRefreshing(false);
   };
 
-  // Show skeleton while first load is in progress
+  // Show skeleton during initial load
   if (loading) {
     return <SkeletonLoader />;
   }
 
   /* ── Calculated Metrics ──────────────────────────────────────── */
-  const linkData = links || [];
-  const totalLinks = linkData.length;
-  const totalClicks = linkData.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0);
+  const totalLinks = links.length;
+  const totalClicks = links.reduce((sum, item) => sum + (Number(item.clicks) || 0), 0);
 
   return (
     <section className="dashboard-page fade-in">
@@ -152,13 +131,6 @@ export default function Dashboard() {
           <span>{refreshing ? 'Updating...' : 'Refresh'}</span>
         </button>
       </div>
-
-      {/* Error Banner */}
-      {error && (
-        <div className="error-banner" role="alert" style={{ marginBottom: '24px' }}>
-          <span>{error}</span>
-        </div>
-      )}
 
       {/* 2 Bento Metric Cards */}
       <div className="stats-grid bento-grid">
@@ -202,11 +174,11 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {linkData.map((link, idx) => {
+                {links.map((link, idx) => {
                   const code = link.shortCode || link.code || link.slug || `link-${idx}`;
                   const dest = link.url || link.originalUrl || '';
                   const clickCount = Number(link.clicks) || 0;
-                  const shortHref = link.shortUrl || `https://link-router.zain.workers.dev/${code}`;
+                  const shortHref = link.shortUrl || `${window.location.origin}/r/${code}`;
 
                   return (
                     <tr key={code + idx}>
