@@ -1,7 +1,7 @@
 /**
  * ===================================================================
- * FILE 4: /backend/worker.js (Synchronized Cloudflare Worker Engine)
- * SnipLink Cloudflare Worker — Edge Authentication & Scoped KV Database
+ * FILE 3: /backend/worker.js (Synchronized Cloudflare Worker Engine)
+ * SnipLink Cloudflare Worker — Edge Authentication with Strict Gmail Check
  * ===================================================================
  */
 
@@ -13,7 +13,7 @@ const CORS_HEADERS = {
 };
 
 const JWT_SECRET = 'sniplink_edge_secret_super_key_2026';
-const STRICT_COM_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$/;
+const STRICT_GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
 /**
  * Creates a JSON response with full CORS headers.
@@ -196,7 +196,7 @@ export default {
     }
 
     /* ═══════════════════════════════════════════════════════════════
-       AUTH ROUTE 1: POST /api/auth/signup (Strict .com Check)
+       AUTH ROUTE 1: POST /api/auth/signup (Strict @gmail.com Check)
        ═══════════════════════════════════════════════════════════════ */
     if (method === 'POST' && pathname === '/api/auth/signup') {
       try {
@@ -213,15 +213,15 @@ export default {
         const email = (body?.email || '').trim().toLowerCase();
         const password = body?.password || '';
 
-        // Strict validation
+        // Validation
         if (!name) {
           return jsonResponse({ error: 'Full name is required.' }, 400);
         }
 
-        // Server-Side Strict .com Regex Validation
-        if (!STRICT_COM_EMAIL_REGEX.test(email)) {
+        // Server-Side Strict @gmail.com Check
+        if (!STRICT_GMAIL_REGEX.test(email)) {
           return jsonResponse({
-            error: 'Invalid email address. Email must strictly end in .com (e.g. user@domain.com).'
+            error: 'Registration is strictly restricted to Gmail accounts only (must end with @gmail.com).'
           }, 400);
         }
 
@@ -331,8 +331,8 @@ export default {
         }
 
         const email = (body?.email || '').trim().toLowerCase();
-        if (!email || !STRICT_COM_EMAIL_REGEX.test(email)) {
-          return jsonResponse({ error: 'Valid .com email is required.' }, 400);
+        if (!email || !email.includes('@')) {
+          return jsonResponse({ error: 'Valid email is required.' }, 400);
         }
 
         const rawUser = await kv.get(`user:${email}`);

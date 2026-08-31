@@ -1,7 +1,7 @@
 /**
  * ===================================================================
  * FILE 1: /frontend/src/components/Signup.jsx
- * Account Creation Component with Strict .com Email Validation
+ * Account Creation Component with Strict @gmail.com Validation
  * (Origin Financial Dark Aesthetic: #090D16, #6366F1, #8B5CF6)
  * ===================================================================
  */
@@ -65,8 +65,8 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
-/* ── Strict .com Email Regex Validator ─────────────────────────── */
-const STRICT_COM_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$/;
+/* ── Strict @gmail.com Regex Validator ─────────────────────────── */
+const STRICT_GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
 /* ── Password Strength Calculator ──────────────────────────────── */
 function calculatePasswordStrength(pass) {
@@ -97,12 +97,12 @@ export default function Signup({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Real-time strict validation states
+  // Real-time strict Gmail validation states
   const isEmailEntered = formData.email.trim().length > 0;
-  const isEmailValidCom = STRICT_COM_EMAIL_REGEX.test(formData.email.trim());
+  const isEmailValidGmail = STRICT_GMAIL_REGEX.test(formData.email.trim());
   const isPasswordValid = formData.password.length >= 6;
   const isNameValid = formData.name.trim().length > 0;
-  const isFormValid = isNameValid && isEmailValidCom && isPasswordValid && formData.agreedToTerms;
+  const isFormValid = isNameValid && isEmailValidGmail && isPasswordValid && formData.agreedToTerms;
 
   const strength = calculatePasswordStrength(formData.password);
 
@@ -122,14 +122,14 @@ export default function Signup({ onLoginSuccess }) {
     const { name, email, password, agreedToTerms } = formData;
     const trimmedEmail = email.trim();
 
-    // Strict Validation Check
+    // 1. Validation Checks
     if (!name.trim()) {
       setError('Please enter your full name.');
       return;
     }
 
-    if (!STRICT_COM_EMAIL_REGEX.test(trimmedEmail)) {
-      setError('Email address must strictly end in .com (e.g. user@domain.com).');
+    if (!STRICT_GMAIL_REGEX.test(trimmedEmail)) {
+      setError('Registration is restricted to Gmail accounts only (must end with @gmail.com).');
       return;
     }
 
@@ -139,7 +139,7 @@ export default function Signup({ onLoginSuccess }) {
     }
 
     if (!agreedToTerms) {
-      setError('You must agree to the Terms of Service and Privacy Policy.');
+      setError('You must agree to the Terms of Service and Privacy Policy to continue.');
       return;
     }
 
@@ -204,10 +204,10 @@ export default function Signup({ onLoginSuccess }) {
             </div>
           </div>
 
-          {/* Email Address with Strict .com Validation */}
+          {/* Email Address with Strict @gmail.com and Label Requirement */}
           <div className="form-group">
             <label htmlFor="signup-email" className="form-label">
-              Email Address <span style={{ color: 'var(--color-accent)' }}>(Must end in .com)</span>
+              Email Address <span className="label-badge-hint">Must end in .COM</span>
             </label>
             <div className="input-with-icon">
               <span className="input-icon"><MailIcon /></span>
@@ -217,17 +217,17 @@ export default function Signup({ onLoginSuccess }) {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="user@domain.com"
+                placeholder="yourname@gmail.com"
                 required
                 autoComplete="email"
-                className={isEmailEntered && !isEmailValidCom ? 'input-error' : ''}
+                className={isEmailEntered && !isEmailValidGmail ? 'input-error' : ''}
               />
             </div>
 
-            {/* Real-time strict .com feedback */}
-            {isEmailEntered && !isEmailValidCom && (
-              <span className="error-text" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                Email must end in <strong>.com</strong> (e.g. name@example.com).
+            {/* Real-time strict Gmail feedback with red text */}
+            {isEmailEntered && !isEmailValidGmail && (
+              <span className="error-text">
+                Must be a valid Gmail account (e.g. yourname@gmail.com).
               </span>
             )}
           </div>
@@ -245,7 +245,7 @@ export default function Signup({ onLoginSuccess }) {
                 type={showPassword ? 'text' : 'password'}
                 value={formData.password}
                 onChange={handleChange}
-                placeholder="At least 6 characters"
+                placeholder="Create a strong password..."
                 required
                 autoComplete="new-password"
               />
@@ -275,7 +275,7 @@ export default function Signup({ onLoginSuccess }) {
             )}
           </div>
 
-          {/* Terms & Conditions Checkbox */}
+          {/* Terms & Conditions Custom Checkbox */}
           <div className="checkbox-group">
             <label className="checkbox-container">
               <input
@@ -297,7 +297,7 @@ export default function Signup({ onLoginSuccess }) {
             type="submit"
             className="btn-auth-submit"
             disabled={loading || !isFormValid}
-            title={!isFormValid ? 'Please complete all required fields with a valid .com email' : 'Create Account'}
+            title={!isFormValid ? 'Please complete all required fields with a valid @gmail.com address' : 'Sign Up'}
           >
             {loading ? (
               <>
@@ -306,7 +306,7 @@ export default function Signup({ onLoginSuccess }) {
               </>
             ) : (
               <>
-                <span>Get Started</span>
+                <span>Sign Up</span>
                 <ArrowRightIcon />
               </>
             )}
